@@ -1,0 +1,27 @@
+﻿story_id,sprint,priority,domain,title,description,endpoint,method,dependencies,owner_role,estimate_points,acceptance_criteria,status
+API-001,Sprint 1,P0,Platform,API foundation bootstrap,Setup service skeleton with versioned routing and middleware,/api/v1/*,N/A,None,Backend Lead,5,Health endpoint up + lint/test pipeline green,Planned
+API-002,Sprint 1,P0,Auth,RBAC middleware,Implement JWT auth and role guards for Admin/Manager/Lead/Executive,/api/v1/*,N/A,API-001,Backend Lead,8,Role-based access enforced for protected endpoints,Planned
+API-003,Sprint 1,P0,Organizations,Organizations CRUD,Implement list/create/get/update/delete with soft delete,/organizations,GET/POST/GET/PATCH/DELETE,API-001;API-002,Backend Engineer,5,All CRUD operations pass contract tests,Planned
+API-004,Sprint 1,P0,Teams,Teams list/create,Implement teams endpoints with org filter,/teams,GET/POST,API-001;API-002,Backend Engineer,3,Team creation and listing with pagination works,Planned
+API-005,Sprint 1,P0,Planning,Planning cycles create/list,Implement planning cycle endpoints,/planning-cycles,GET/POST,API-001;API-002,Backend Engineer,3,Date validation and team linkage enforced,Planned
+API-006,Sprint 1,P0,Capacity,Capacity plans create/list,Implement core capacity plan endpoints,/capacity-plans,GET/POST,API-005,Backend Engineer,5,Numeric validation and filters are correct,Planned
+API-007,Sprint 1,P0,Capacity,Allocations create/list,Implement allocation endpoints with total <= 100 rule,/allocations,GET/POST,API-005,Backend Engineer,5,Allocation cap validation enforced per cycle/team,Planned
+API-008,Sprint 1,P0,Dashboard,Portfolio dashboard summary,Implement aggregated KPI summary endpoint,/dashboards/portfolio,GET,API-006;API-007;DATA-001,Backend Lead,8,Returns tiles with status and trend based on filters,Planned
+API-009,Sprint 1,P1,Quality,Quality metric snapshots list,Implement quality metric listing,/quality-metrics,GET,DATA-002,Backend Engineer,3,Supports date/team/repo filters,Planned
+API-010,Sprint 1,P1,Action Items,Action items create/list,Implement action item endpoints,/action-items,GET/POST,API-002,Backend Engineer,3,Create/list with status filtering works,Planned
+DATA-001,Sprint 1,P0,Data,Seed metric definitions and thresholds,Load baseline metric IDs and thresholds,/metric-definitions;/metric-thresholds,POST,API-001,Data Engineer,3,Seed script idempotent and validated,Planned
+OBS-001,Sprint 1,P1,Platform,Observability baseline,Add request logs, metrics, correlation ID,alerts,/api/v1/*,N/A,API-001,Platform Engineer,3,Trace/log correlation available in non-prod,Planned
+QA-001,Sprint 1,P0,QA,Contract test harness setup,Create API contract test project and CI job,/api/v1/*,N/A,API-001,QA Lead,5,PR pipeline runs contract tests with report,Planned
+
+API-011,Sprint 2,P0,Security,Security findings list/create,Implement security findings endpoints,/security-findings,GET/POST,API-002;DATA-003,Backend Engineer,5,Severity/status filters and validation pass,Planned
+API-012,Sprint 2,P0,Dashboard,Team scorecard endpoint,Implement team scorecard aggregation,/dashboards/team-scorecard,GET,API-006;API-009;API-011,Backend Lead,8,Returns metric list with target+status,Planned
+API-013,Sprint 2,P1,Admin,Metric definitions endpoints,Implement metric definitions list/create,/metric-definitions,GET/POST,API-002,Backend Engineer,3,Fields and formula persisted with validation,Planned
+API-014,Sprint 2,P1,Admin,Metric thresholds endpoints,Implement metric thresholds list/create,/metric-thresholds,GET/POST,API-013,Backend Engineer,3,Threshold rules stored per metric,Planned
+API-015,Sprint 2,P1,Repository,Repositories list endpoint,Implement repository listing and team mapping,/repositories,GET,DATA-004,Backend Engineer,2,Repo listing supports filtering,Planned
+API-016,Sprint 2,P1,Users,Users list endpoint,Implement users list endpoint,/users,GET,API-002,Backend Engineer,2,Role and org filters work,Planned
+API-017,Sprint 2,P1,Hardening,Error model consistency,Enforce standard error envelope across endpoints,/api/v1/*,N/A,API-001,Backend Lead,3,All errors return correlationId+code+message,Planned
+DATA-002,Sprint 2,P1,Data,Quality feed adapter (stub),Create ingestion adapter contract for quality snapshots,/quality-metrics,GET,Day3-4 access readiness,Data Engineer,5,Stub data source replaceable by real connector,Planned
+DATA-003,Sprint 2,P1,Data,Security feed adapter (stub),Create ingestion adapter contract for security findings,/security-findings,GET/POST,Day3-4 access readiness,Data Engineer,5,Stub source aligned with Snyk schema,Planned
+DATA-004,Sprint 2,P2,Data,Repo-team mapping table,Introduce mapping table for repository ownership,/repositories,GET,API-015,Data Engineer,3,Mapping query resolves team for repo,Planned
+QA-002,Sprint 2,P0,QA,Critical endpoint contract tests,Add P0 endpoint test suite and edge cases,/dashboards/*;/planning-cycles;/security-findings,GET/POST,QA-001,QA Lead,5,Critical tests pass in CI + nightly,Planned
+SEC-001,Sprint 2,P1,Security,Security headers and rate limits,Add baseline API security hardening,/api/v1/*,N/A,API-002,Security Champion,3,Headers + throttling configured and tested,Planned

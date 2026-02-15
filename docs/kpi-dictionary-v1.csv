@@ -1,0 +1,17 @@
+﻿metric_id,domain,metric_name,description,formula,numerator,denominator,unit,aggregation_window,data_source,source_object,refresh_cadence,owner_role,target_green,target_amber,target_red,exclusions,notes,status
+CAP-01,Capacity,Planned Capacity Hours,,,,,hours,sprint,,,,,,,,,,Draft
+CAP-02,Capacity,Actual Capacity Hours,,,,,hours,sprint,,,,,,,,,,Draft
+CAP-03,Capacity,Utilization Percent,,,,,percent,sprint,,,,,,,,,,Draft
+CAP-04,Capacity,Allocation Accuracy Percent,,,,,percent,sprint,,,,,,,,,,Draft
+QUAL-01,Quality,Code Coverage Percent,,,,,percent,week,,,,,,,,,,Draft
+QUAL-02,Quality,Defect Escape Rate,,,,,percent,month,,,,,,,,,,Draft
+QUAL-03,Quality,Change Failure Rate,,,,,percent,month,,,,,,,,,,Draft
+QUAL-04,Quality,Code Smell Density,,,,,ratio,week,,,,,,,,,,Draft
+SEC-01,Security,Open Critical Vulnerabilities,,,,,count,day,,,,,,,,,,Draft
+SEC-02,Security,Open High Vulnerabilities,,,,,count,day,,,,,,,,,,Draft
+SEC-03,Security,Vulnerability SLA Breach Percent,,,,,percent,day,,,,,,,,,,Draft
+SEC-04,Security,Vulnerability MTTR Days,,,,,days,month,,,,,,,,,,Draft
+DEL-01,Delivery,Deployment Frequency,,,,,count,week,,,,,,,,,,Draft
+DEL-02,Delivery,Lead Time for Changes,,,,,hours,week,,,,,,,,,,Draft
+DEL-03,Delivery,Cycle Time,,,,,days,sprint,,,,,,,,,,Draft
+DEL-04,Delivery,Incident Rate,,,,,ratio,month,,,,,,,,,,Draft

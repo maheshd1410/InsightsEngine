@@ -1,0 +1,9 @@
+﻿source_system,domain,metric_id,data_entity,field_names,owner_team,update_pattern,latency_expectation,data_quality_risk,notes
+Jira,Capacity,CAP-04,Issue,story_points;sprint;status,Engineering Ops,API pull,daily,medium,
+Jira,Quality,QUAL-02,Bug,environment;created;resolved,QA,API pull,daily,high,
+GitHub,Delivery,DEL-02,Commit,commit_time;merge_time,Platform,Webhook,near-real-time,medium,
+CI/CD,Delivery,DEL-01,Deployment,deployment_time;environment,Platform,Webhook,near-real-time,low,
+SonarQube,Quality,QUAL-01,Analysis,coverage;code_smells,QA/Platform,API pull,daily,low,
+Snyk,Security,SEC-01,Finding,severity;opened;closed,Security,API pull,daily,medium,
+Snyk,Security,SEC-03,Finding,sla_due_date;status,Security,API pull,daily,medium,
+Incident Tool,Delivery,DEL-04,Incident,severity;opened;resolved,SRE,API pull,daily,medium,

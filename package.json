@@ -1,0 +1,15 @@
+{
+  "name": "insights-engine",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "lint": "npm run lint -w backend && npm run lint -w frontend",
+    "test": "npm run test -w backend",
+    "dev:backend": "npm run start:dev -w backend",
+    "dev:frontend": "npm run dev -w frontend"
+  }
+}

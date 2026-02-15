@@ -1,0 +1,5 @@
+﻿{
+  "correlationId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+  "code": "UNAUTHORIZED",
+  "message": "Authentication required"
+}

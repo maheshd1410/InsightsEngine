@@ -1,0 +1,9 @@
+﻿integration,domain,business_value_1_5,complexity_1_5,data_risk_1_5,access_ready,owner,wave,notes
+Jira Capacity/Defect Feed,Capacity+Quality,5,2,3,Partial,Engineering Ops,Wave 1,Needs standardized custom fields
+SonarQube Quality Feed,Quality,4,2,2,Yes,QA/Platform,Wave 1,
+Snyk Vulnerability Feed,Security,5,3,3,Partial,Security,Wave 1,Service-account scope pending
+CI/CD Deployment Feed,Delivery,5,3,2,Partial,Platform,Wave 1,Standardize deployment metadata tags
+GitHub Commit/PR Feed,Delivery,4,3,3,Partial,Platform,Wave 1,Repo-to-team mapping needs cleanup
+Incident Tool Feed,Delivery+Quality,4,3,3,No,SRE,Wave 2,API access request pending
+CodeQL Feed,Security,3,4,3,No,Security,Wave 2,Schema differs from Snyk model
+Azure DevOps Fallback Feed,Capacity,2,4,4,No,Eng Ops,Wave 2,Only needed for non-Jira teams

@@ -1,0 +1,9 @@
+﻿node_modules/
+.dist/
+coverage/
+.env
+.env.*
+backend/dist/
+backend/node_modules/
+frontend/.next/
+frontend/node_modules/

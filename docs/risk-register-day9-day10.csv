@@ -1,0 +1,9 @@
+﻿risk_id,category,risk,impact_1_5,likelihood_1_5,score,mitigation,owner,due_date,status
+R-001,Data Quality,Inconsistent team/repo mapping causes inaccurate dashboards,5,4,20,Create canonical repo-team mapping table and validation checks,Data Engineer,2026-02-22,Open
+R-002,Access,Delayed API credentials block ingestion setup,5,3,15,Track access checklist daily and escalate blockers to system owners,Engineering Manager,2026-02-19,Open
+R-003,Security,Role misconfiguration exposes sensitive data,5,2,10,Implement RBAC tests and least-privilege review before release,Security Champion,2026-02-26,Open
+R-004,Performance,Dashboard aggregation queries exceed latency targets,4,3,12,Add caching and targeted DB indexes for filter dimensions,Backend Lead,2026-02-28,Open
+R-005,Delivery,Sprint over-commitment reduces quality,4,3,12,Enforce WIP limits and maintain de-scope list for non-critical items,Engineering Manager,2026-02-21,Open
+R-006,Integration,Source API schema changes break connectors,4,2,8,Add contract monitors and fallback parser strategy,Platform Engineer,2026-03-05,Open
+R-007,Compliance,Audit trail gaps for critical updates,4,2,8,Log all CRUD mutations with actor/time/delta and audit tests,Backend Lead,2026-02-27,Open
+R-008,Operations,Insufficient alerting delays incident response,3,3,9,Define alert thresholds and on-call ownership matrix,Platform Lead,2026-02-25,Open

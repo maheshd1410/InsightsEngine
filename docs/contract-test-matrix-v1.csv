@@ -1,0 +1,11 @@
+﻿test_id,priority,endpoint,method,scenario,request_fixture,response_fixture,expected_status,notes
+CT-001,P0,/dashboards/portfolio,GET,Returns KPI summary for org/date range,fixtures/requests/get-portfolio-dashboard.json,fixtures/responses/get-portfolio-dashboard-200.json,200,Validate tiles count and status enum
+CT-002,P0,/planning-cycles,POST,Creates planning cycle with valid dates,fixtures/requests/post-planning-cycle-valid.json,fixtures/responses/post-planning-cycle-201.json,201,Validate schema and teamId format
+CT-003,P0,/planning-cycles,POST,Rejects planning cycle when endDate < startDate,fixtures/requests/post-planning-cycle-invalid-dates.json,fixtures/responses/error-400-validation.json,400,Date validation
+CT-004,P0,/capacity-plans,POST,Creates capacity plan with plannedHours >= 0,fixtures/requests/post-capacity-plan-valid.json,fixtures/responses/post-capacity-plan-201.json,201,Numeric validation
+CT-005,P0,/allocations,POST,Rejects allocationPercent > 100,fixtures/requests/post-allocation-invalid-percent.json,fixtures/responses/error-400-validation.json,400,Enforce allocation cap
+CT-006,P0,/security-findings,GET,Filters findings by severity and status,fixtures/requests/get-security-findings-filtered.json,fixtures/responses/get-security-findings-200.json,200,Filter semantics
+CT-007,P0,/action-items,POST,Creates action item with owner and due date,fixtures/requests/post-action-item-valid.json,fixtures/responses/post-action-item-201.json,201,Status default checks
+CT-008,P1,/organizations,DELETE,Soft deletes organization,fixtures/requests/delete-organization.json,fixtures/responses/empty-204.json,204,Verify not hard deleted
+CT-009,P1,/metric-definitions,POST,Creates metric definition with formula,fixtures/requests/post-metric-definition-valid.json,fixtures/responses/post-metric-definition-201.json,201,Formula persisted
+CT-010,P1,/api/v1/*,ANY,Unauthorized request returns standard error envelope,fixtures/requests/unauthorized-request.json,fixtures/responses/error-401-unauthorized.json,401,Verify correlationId/code/message

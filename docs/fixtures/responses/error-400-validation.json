@@ -1,0 +1,5 @@
+﻿{
+  "correlationId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "code": "VALIDATION_ERROR",
+  "message": "Validation failed for request payload"
+}

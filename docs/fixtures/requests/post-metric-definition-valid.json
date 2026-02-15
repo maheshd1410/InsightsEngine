@@ -1,0 +1,8 @@
+﻿{
+  "metricId": "QUAL-01",
+  "domain": "Quality",
+  "name": "Code Coverage Percent",
+  "description": "Covered lines over total lines",
+  "formula": "covered_lines / total_lines * 100",
+  "ownerRole": "QA Lead"
+}

@@ -1,0 +1,583 @@
+﻿openapi: 3.0.3
+info:
+  title: Insights Engine API
+  version: 1.0.0
+  description: MVP API contract skeleton for software engineering metrics dashboard.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Organizations
+  - name: Teams
+  - name: Users
+  - name: PlanningCycles
+  - name: CapacityPlans
+  - name: Allocations
+  - name: Repositories
+  - name: QualityMetrics
+  - name: SecurityFindings
+  - name: MetricDefinitions
+  - name: MetricThresholds
+  - name: ActionItems
+  - name: Dashboards
+paths:
+  /organizations:
+    get:
+      tags: [Organizations]
+      summary: List organizations
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200':
+          description: Organization list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrganizationListResponse'
+    post:
+      tags: [Organizations]
+      summary: Create organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationCreateRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+  /organizations/{organizationId}:
+    get:
+      tags: [Organizations]
+      summary: Get organization
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '200':
+          description: Organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+    patch:
+      tags: [Organizations]
+      summary: Update organization
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationUpdateRequest'
+      responses:
+        '200':
+          description: Updated
+    delete:
+      tags: [Organizations]
+      summary: Soft delete organization
+      parameters:
+        - $ref: '#/components/parameters/OrganizationId'
+      responses:
+        '204':
+          description: Deleted
+
+  /teams:
+    get:
+      tags: [Teams]
+      summary: List teams
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdQuery'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Team list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamListResponse'
+    post:
+      tags: [Teams]
+      summary: Create team
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamCreateRequest'
+      responses:
+        '201':
+          description: Created
+
+  /users:
+    get:
+      tags: [Users]
+      summary: List users
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: User list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+
+  /planning-cycles:
+    get:
+      tags: [PlanningCycles]
+      summary: List planning cycles
+      parameters:
+        - $ref: '#/components/parameters/TeamIdQuery'
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+      responses:
+        '200':
+          description: Planning cycle list
+    post:
+      tags: [PlanningCycles]
+      summary: Create planning cycle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanningCycleCreateRequest'
+      responses:
+        '201':
+          description: Created
+
+  /capacity-plans:
+    get:
+      tags: [CapacityPlans]
+      summary: List capacity plans
+      parameters:
+        - $ref: '#/components/parameters/TeamIdQuery'
+        - $ref: '#/components/parameters/PlanningCycleIdQuery'
+      responses:
+        '200':
+          description: Capacity plan list
+    post:
+      tags: [CapacityPlans]
+      summary: Create capacity plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CapacityPlanCreateRequest'
+      responses:
+        '201':
+          description: Created
+
+  /allocations:
+    get:
+      tags: [Allocations]
+      summary: List allocations
+      parameters:
+        - $ref: '#/components/parameters/TeamIdQuery'
+        - $ref: '#/components/parameters/PlanningCycleIdQuery'
+      responses:
+        '200':
+          description: Allocation list
+    post:
+      tags: [Allocations]
+      summary: Create allocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AllocationCreateRequest'
+      responses:
+        '201':
+          description: Created
+
+  /repositories:
+    get:
+      tags: [Repositories]
+      summary: List repositories
+      responses:
+        '200':
+          description: Repository list
+
+  /quality-metrics:
+    get:
+      tags: [QualityMetrics]
+      summary: List quality metric snapshots
+      parameters:
+        - $ref: '#/components/parameters/TeamIdQuery'
+        - $ref: '#/components/parameters/RepositoryIdQuery'
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+      responses:
+        '200':
+          description: Quality metrics list
+
+  /security-findings:
+    get:
+      tags: [SecurityFindings]
+      summary: List security findings
+      parameters:
+        - $ref: '#/components/parameters/TeamIdQuery'
+        - $ref: '#/components/parameters/Severity'
+        - $ref: '#/components/parameters/Status'
+      responses:
+        '200':
+          description: Security findings list
+    post:
+      tags: [SecurityFindings]
+      summary: Create security finding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecurityFindingCreateRequest'
+      responses:
+        '201':
+          description: Created
+
+  /metric-definitions:
+    get:
+      tags: [MetricDefinitions]
+      summary: List metric definitions
+      responses:
+        '200':
+          description: Metric definitions list
+    post:
+      tags: [MetricDefinitions]
+      summary: Create metric definition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MetricDefinitionCreateRequest'
+      responses:
+        '201':
+          description: Created
+
+  /metric-thresholds:
+    get:
+      tags: [MetricThresholds]
+      summary: List metric thresholds
+      responses:
+        '200':
+          description: Metric thresholds list
+    post:
+      tags: [MetricThresholds]
+      summary: Create metric threshold
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MetricThresholdCreateRequest'
+      responses:
+        '201':
+          description: Created
+
+  /action-items:
+    get:
+      tags: [ActionItems]
+      summary: List action items
+      parameters:
+        - $ref: '#/components/parameters/TeamIdQuery'
+        - $ref: '#/components/parameters/Status'
+      responses:
+        '200':
+          description: Action item list
+    post:
+      tags: [ActionItems]
+      summary: Create action item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionItemCreateRequest'
+      responses:
+        '201':
+          description: Created
+
+  /dashboards/portfolio:
+    get:
+      tags: [Dashboards]
+      summary: Portfolio dashboard summary
+      parameters:
+        - $ref: '#/components/parameters/OrganizationIdQuery'
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+      responses:
+        '200':
+          description: Portfolio dashboard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortfolioDashboardResponse'
+
+  /dashboards/team-scorecard:
+    get:
+      tags: [Dashboards]
+      summary: Team scorecard
+      parameters:
+        - $ref: '#/components/parameters/TeamIdQuery'
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+      responses:
+        '200':
+          description: Team scorecard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TeamScorecardResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Page:
+      in: query
+      name: page
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      in: query
+      name: pageSize
+      schema: { type: integer, minimum: 1, maximum: 200, default: 25 }
+    Sort:
+      in: query
+      name: sort
+      schema: { type: string, example: createdAt:desc }
+    OrganizationId:
+      in: path
+      name: organizationId
+      required: true
+      schema: { type: string, format: uuid }
+    OrganizationIdQuery:
+      in: query
+      name: organizationId
+      schema: { type: string, format: uuid }
+    TeamIdQuery:
+      in: query
+      name: teamId
+      schema: { type: string, format: uuid }
+    PlanningCycleIdQuery:
+      in: query
+      name: planningCycleId
+      schema: { type: string, format: uuid }
+    RepositoryIdQuery:
+      in: query
+      name: repositoryId
+      schema: { type: string, format: uuid }
+    DateFrom:
+      in: query
+      name: dateFrom
+      schema: { type: string, format: date }
+    DateTo:
+      in: query
+      name: dateTo
+      schema: { type: string, format: date }
+    Severity:
+      in: query
+      name: severity
+      schema: { type: string, enum: [critical, high, medium, low] }
+    Status:
+      in: query
+      name: status
+      schema: { type: string }
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        correlationId: { type: string }
+        code: { type: string }
+        message: { type: string }
+
+    Organization:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        code: { type: string }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    OrganizationCreateRequest:
+      type: object
+      required: [name, code]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        code: { type: string, minLength: 2, maxLength: 24 }
+
+    OrganizationUpdateRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 2, maxLength: 120 }
+        isActive: { type: boolean }
+
+    OrganizationListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Organization'
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+
+    TeamCreateRequest:
+      type: object
+      required: [organizationId, name]
+      properties:
+        organizationId: { type: string, format: uuid }
+        name: { type: string }
+
+    TeamListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              organizationId: { type: string, format: uuid }
+              name: { type: string }
+              createdAt: { type: string, format: date-time }
+        total: { type: integer }
+
+    UserListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              email: { type: string, format: email }
+              displayName: { type: string }
+              role: { type: string }
+        total: { type: integer }
+
+    PlanningCycleCreateRequest:
+      type: object
+      required: [teamId, name, startDate, endDate]
+      properties:
+        teamId: { type: string, format: uuid }
+        name: { type: string }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+
+    CapacityPlanCreateRequest:
+      type: object
+      required: [planningCycleId, teamId, plannedHours]
+      properties:
+        planningCycleId: { type: string, format: uuid }
+        teamId: { type: string, format: uuid }
+        plannedHours: { type: number, minimum: 0 }
+
+    AllocationCreateRequest:
+      type: object
+      required: [planningCycleId, teamId, category, allocationPercent]
+      properties:
+        planningCycleId: { type: string, format: uuid }
+        teamId: { type: string, format: uuid }
+        category: { type: string }
+        allocationPercent: { type: number, minimum: 0, maximum: 100 }
+
+    SecurityFindingCreateRequest:
+      type: object
+      required: [teamId, repositoryId, severity, title, status]
+      properties:
+        teamId: { type: string, format: uuid }
+        repositoryId: { type: string, format: uuid }
+        severity: { type: string, enum: [critical, high, medium, low] }
+        title: { type: string }
+        status: { type: string }
+        sourceTool: { type: string }
+        openedAt: { type: string, format: date-time }
+        dueAt: { type: string, format: date-time }
+
+    MetricDefinitionCreateRequest:
+      type: object
+      required: [metricId, domain, name, formula]
+      properties:
+        metricId: { type: string }
+        domain: { type: string, enum: [Capacity, Quality, Security, Delivery] }
+        name: { type: string }
+        description: { type: string }
+        formula: { type: string }
+        ownerRole: { type: string }
+
+    MetricThresholdCreateRequest:
+      type: object
+      required: [metricId, greenMin, amberMin, redMin]
+      properties:
+        metricId: { type: string }
+        greenMin: { type: number }
+        amberMin: { type: number }
+        redMin: { type: number }
+        effectiveFrom: { type: string, format: date }
+
+    ActionItemCreateRequest:
+      type: object
+      required: [title, ownerUserId, dueDate, status]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        ownerUserId: { type: string, format: uuid }
+        dueDate: { type: string, format: date }
+        status: { type: string, enum: [open, in_progress, blocked, done] }
+
+    PortfolioDashboardResponse:
+      type: object
+      properties:
+        dateFrom: { type: string, format: date }
+        dateTo: { type: string, format: date }
+        summaryTiles:
+          type: array
+          items:
+            type: object
+            properties:
+              metricId: { type: string }
+              label: { type: string }
+              value: { type: number }
+              trendDirection: { type: string, enum: [up, down, flat] }
+              status: { type: string, enum: [green, amber, red] }
+
+    TeamScorecardResponse:
+      type: object
+      properties:
+        teamId: { type: string, format: uuid }
+        period:
+          type: object
+          properties:
+            dateFrom: { type: string, format: date }
+            dateTo: { type: string, format: date }
+        metrics:
+          type: array
+          items:
+            type: object
+            properties:
+              metricId: { type: string }
+              value: { type: number }
+              target: { type: number }
+              status: { type: string, enum: [green, amber, red] }

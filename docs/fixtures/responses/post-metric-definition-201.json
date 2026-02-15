@@ -1,0 +1,7 @@
+﻿{
+  "id": "99999999-9999-9999-9999-999999999999",
+  "metricId": "QUAL-01",
+  "domain": "Quality",
+  "name": "Code Coverage Percent",
+  "formula": "covered_lines / total_lines * 100"
+}

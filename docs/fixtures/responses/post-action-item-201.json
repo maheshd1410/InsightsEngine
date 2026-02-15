@@ -1,0 +1,8 @@
+﻿{
+  "id": "88888888-8888-8888-8888-888888888888",
+  "title": "Fix high vuln in payment service",
+  "description": "Upgrade vulnerable dependency",
+  "ownerUserId": "44444444-4444-4444-4444-444444444444",
+  "dueDate": "2026-03-01",
+  "status": "open"
+}
