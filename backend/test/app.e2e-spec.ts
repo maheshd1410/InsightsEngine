@@ -47,35 +47,61 @@ describe('App (e2e)', () => {
     expect(response.status).toBe(401);
   });
 
-  it('/api/v1/organizations (POST) returns 403 for manager role', async () => {
+  it('/api/v1/organizations CRUD + RBAC', async () => {
+    const adminToken = createToken('admin');
     const managerToken = createToken('engineering_manager');
 
-    const response = await request(app.getHttpServer())
+    const forbiddenCreate = await request(app.getHttpServer())
       .post('/api/v1/organizations')
       .set('Authorization', `Bearer ${managerToken}`)
       .send({ name: 'Engineering', code: 'eng' });
-
-    expect(response.status).toBe(403);
-  });
-
-  it('/api/v1/organizations (POST/GET) succeeds for authorized roles', async () => {
-    const adminToken = createToken('admin');
-    const managerToken = createToken('engineering_manager');
+    expect(forbiddenCreate.status).toBe(403);
 
     const createResponse = await request(app.getHttpServer())
       .post('/api/v1/organizations')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ name: 'Engineering', code: 'eng' });
-
     expect(createResponse.status).toBe(201);
     expect(createResponse.body.code).toBe('ENG');
 
-    const listResponse = await request(app.getHttpServer())
-      .get('/api/v1/organizations')
-      .set('Authorization', `Bearer ${managerToken}`);
+    const organizationId = createResponse.body.id as string;
 
+    const listResponse = await request(app.getHttpServer())
+      .get('/api/v1/organizations?page=1&pageSize=10')
+      .set('Authorization', `Bearer ${managerToken}`);
     expect(listResponse.status).toBe(200);
-    expect(Array.isArray(listResponse.body)).toBe(true);
-    expect(listResponse.body.length).toBeGreaterThan(0);
+    expect(Array.isArray(listResponse.body.items)).toBe(true);
+    expect(listResponse.body.total).toBeGreaterThan(0);
+
+    const byIdResponse = await request(app.getHttpServer())
+      .get(`/api/v1/organizations/${organizationId}`)
+      .set('Authorization', `Bearer ${managerToken}`);
+    expect(byIdResponse.status).toBe(200);
+    expect(byIdResponse.body.id).toBe(organizationId);
+
+    const patchResponse = await request(app.getHttpServer())
+      .patch(`/api/v1/organizations/${organizationId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Engineering Core', code: 'core' });
+    expect(patchResponse.status).toBe(200);
+    expect(patchResponse.body.name).toBe('Engineering Core');
+    expect(patchResponse.body.code).toBe('CORE');
+
+    const managerPatchForbidden = await request(app.getHttpServer())
+      .patch(`/api/v1/organizations/${organizationId}`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ name: 'Nope' });
+    expect(managerPatchForbidden.status).toBe(403);
+
+    const deleteResponse = await request(app.getHttpServer())
+      .delete(`/api/v1/organizations/${organizationId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(deleteResponse.status).toBe(204);
+
+    const afterDeleteResponse = await request(app.getHttpServer())
+      .get(`/api/v1/organizations/${organizationId}`)
+      .set('Authorization', `Bearer ${managerToken}`);
+    expect(afterDeleteResponse.status).toBe(200);
+    expect(afterDeleteResponse.body.isActive).toBe(false);
   });
 });

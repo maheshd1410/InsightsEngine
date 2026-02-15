@@ -11,3 +11,16 @@ export interface CreateOrganizationRequest {
   name: string;
   code: string;
 }
+
+export interface UpdateOrganizationRequest {
+  name?: string;
+  code?: string;
+  isActive?: boolean;
+}
+
+export interface OrganizationListResponse {
+  items: Organization[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
