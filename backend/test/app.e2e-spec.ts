@@ -104,4 +104,52 @@ describe('App (e2e)', () => {
     expect(afterDeleteResponse.status).toBe(200);
     expect(afterDeleteResponse.body.isActive).toBe(false);
   });
+
+  it('/api/v1/teams (POST/GET) with organization filter + RBAC', async () => {
+    const adminToken = createToken('admin');
+    const managerToken = createToken('engineering_manager');
+
+    const org1 = await request(app.getHttpServer())
+      .post('/api/v1/organizations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Delivery', code: 'dlv' });
+    expect(org1.status).toBe(201);
+
+    const org2 = await request(app.getHttpServer())
+      .post('/api/v1/organizations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Security', code: 'sec' });
+    expect(org2.status).toBe(201);
+
+    const managerCreateForbidden = await request(app.getHttpServer())
+      .post('/api/v1/teams')
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ organizationId: org1.body.id, name: 'Platform' });
+    expect(managerCreateForbidden.status).toBe(403);
+
+    const createTeam1 = await request(app.getHttpServer())
+      .post('/api/v1/teams')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ organizationId: org1.body.id, name: 'Platform' });
+    expect(createTeam1.status).toBe(201);
+
+    const createTeam2 = await request(app.getHttpServer())
+      .post('/api/v1/teams')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ organizationId: org2.body.id, name: 'AppSec' });
+    expect(createTeam2.status).toBe(201);
+
+    const managerListForbidden = await request(app.getHttpServer())
+      .get('/api/v1/teams')
+      .set('Authorization', `Bearer ${managerToken}`);
+    expect(managerListForbidden.status).toBe(403);
+
+    const filteredList = await request(app.getHttpServer())
+      .get(`/api/v1/teams?organizationId=${org1.body.id}&page=1&pageSize=10`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(filteredList.status).toBe(200);
+    expect(filteredList.body.total).toBe(1);
+    expect(filteredList.body.items[0].organizationId).toBe(org1.body.id);
+    expect(filteredList.body.items[0].name).toBe('Platform');
+  });
 });
