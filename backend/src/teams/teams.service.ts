@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { CreateTeamRequest, Team, TeamListResponse } from './teams.types';
@@ -23,6 +23,15 @@ export class TeamsService {
       pageSize,
       total: filtered.length,
     };
+  }
+
+  getById(teamId: string): Team {
+    const team = this.teams.find((item) => item.id === teamId);
+    if (!team) {
+      throw new NotFoundException('Team not found.');
+    }
+
+    return team;
   }
 
   create(input: CreateTeamRequest): Team {

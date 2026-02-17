@@ -152,4 +152,122 @@ describe('App (e2e)', () => {
     expect(filteredList.body.items[0].organizationId).toBe(org1.body.id);
     expect(filteredList.body.items[0].name).toBe('Platform');
   });
+
+  it('/api/v1/planning-cycles (POST/GET) with filters + RBAC', async () => {
+    const adminToken = createToken('admin');
+    const managerToken = createToken('engineering_manager');
+
+    const org = await request(app.getHttpServer())
+      .post('/api/v1/organizations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Planning', code: 'pln' });
+    expect(org.status).toBe(201);
+
+    const team = await request(app.getHttpServer())
+      .post('/api/v1/teams')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ organizationId: org.body.id, name: 'Cycle Team' });
+    expect(team.status).toBe(201);
+
+    const managerCreate = await request(app.getHttpServer())
+      .post('/api/v1/planning-cycles')
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({
+        teamId: team.body.id,
+        name: 'Sprint 12',
+        startDate: '2026-04-01',
+        endDate: '2026-04-14',
+      });
+    expect(managerCreate.status).toBe(201);
+
+    const adminCreate = await request(app.getHttpServer())
+      .post('/api/v1/planning-cycles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        teamId: team.body.id,
+        name: 'Sprint 13',
+        startDate: '2026-04-15',
+        endDate: '2026-04-28',
+      });
+    expect(adminCreate.status).toBe(201);
+
+    const listFiltered = await request(app.getHttpServer())
+      .get(
+        `/api/v1/planning-cycles?teamId=${team.body.id}&dateFrom=2026-04-01&dateTo=2026-04-30&page=1&pageSize=10`,
+      )
+      .set('Authorization', `Bearer ${managerToken}`);
+    expect(listFiltered.status).toBe(200);
+    expect(listFiltered.body.total).toBe(2);
+    expect(Array.isArray(listFiltered.body.items)).toBe(true);
+
+    const noAuthList = await request(app.getHttpServer()).get('/api/v1/planning-cycles');
+    expect(noAuthList.status).toBe(401);
+  });
+
+  it('/api/v1/capacity-plans (POST/GET) with filters + RBAC', async () => {
+    const adminToken = createToken('admin');
+    const managerToken = createToken('engineering_manager');
+    const leadToken = createToken('team_lead');
+
+    const org = await request(app.getHttpServer())
+      .post('/api/v1/organizations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Capacity', code: 'cap' });
+    expect(org.status).toBe(201);
+
+    const team = await request(app.getHttpServer())
+      .post('/api/v1/teams')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ organizationId: org.body.id, name: 'Capacity Team' });
+    expect(team.status).toBe(201);
+
+    const cycle = await request(app.getHttpServer())
+      .post('/api/v1/planning-cycles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        teamId: team.body.id,
+        name: 'Sprint 20',
+        startDate: '2026-06-01',
+        endDate: '2026-06-14',
+      });
+    expect(cycle.status).toBe(201);
+
+    const leadCreateForbidden = await request(app.getHttpServer())
+      .post('/api/v1/capacity-plans')
+      .set('Authorization', `Bearer ${leadToken}`)
+      .send({
+        teamId: team.body.id,
+        planningCycleId: cycle.body.id,
+        plannedHours: 300,
+      });
+    expect(leadCreateForbidden.status).toBe(403);
+
+    const managerCreate = await request(app.getHttpServer())
+      .post('/api/v1/capacity-plans')
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({
+        teamId: team.body.id,
+        planningCycleId: cycle.body.id,
+        plannedHours: 300,
+      });
+    expect(managerCreate.status).toBe(201);
+    expect(managerCreate.body.plannedHours).toBe(300);
+
+    const leadList = await request(app.getHttpServer())
+      .get(`/api/v1/capacity-plans?teamId=${team.body.id}&planningCycleId=${cycle.body.id}`)
+      .set('Authorization', `Bearer ${leadToken}`);
+    expect(leadList.status).toBe(200);
+    expect(leadList.body.total).toBe(1);
+    expect(leadList.body.items[0].teamId).toBe(team.body.id);
+
+    const badHours = await request(app.getHttpServer())
+      .post('/api/v1/capacity-plans')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        teamId: team.body.id,
+        planningCycleId: cycle.body.id,
+        plannedHours: -1,
+      });
+    expect(badHours.status).toBe(400);
+  });
 });
