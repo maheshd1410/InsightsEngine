@@ -1,0 +1,173 @@
+import { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import { sign } from 'jsonwebtoken';
+import request from 'supertest';
+import { AppModule } from '../src/app.module';
+import { AppRole } from '../src/auth/auth.types';
+
+describe('Implemented API contracts', () => {
+  let app: INestApplication;
+  const jwtSecret = 'dev-secret';
+
+  const createToken = (role: AppRole): string =>
+    sign(
+      {
+        sub: `contract-${role}`,
+        email: `${role}@contract.local`,
+        role,
+      },
+      jwtSecret,
+      { expiresIn: '1h' },
+    );
+
+  beforeAll(async () => {
+    process.env.JWT_SECRET = jwtSecret;
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    app.setGlobalPrefix('api/v1');
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('GET /api/v1/health contract', async () => {
+    const response = await request(app.getHttpServer()).get('/api/v1/health');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        status: 'ok',
+        service: 'insights-engine-backend',
+        timestamp: expect.any(String),
+      }),
+    );
+  });
+
+  it('GET /api/v1/organizations unauthorized contract', async () => {
+    const response = await request(app.getHttpServer()).get('/api/v1/organizations');
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        statusCode: 401,
+        message: expect.any(String),
+      }),
+    );
+  });
+
+  it('Core implemented endpoints return expected response shapes', async () => {
+    const adminToken = createToken('admin');
+    const managerToken = createToken('engineering_manager');
+    const leadToken = createToken('team_lead');
+    const executiveToken = createToken('executive');
+
+    const org = await request(app.getHttpServer())
+      .post('/api/v1/organizations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Contract Org', code: 'ctr' });
+    expect(org.status).toBe(201);
+    expect(org.body).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        name: 'Contract Org',
+        code: 'CTR',
+        isActive: true,
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+      }),
+    );
+
+    const teams = await request(app.getHttpServer())
+      .post('/api/v1/teams')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ organizationId: org.body.id, name: 'Contract Team' });
+    expect(teams.status).toBe(201);
+    expect(teams.body).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        organizationId: org.body.id,
+        name: 'Contract Team',
+        isActive: true,
+      }),
+    );
+
+    const cycle = await request(app.getHttpServer())
+      .post('/api/v1/planning-cycles')
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({
+        teamId: teams.body.id,
+        name: 'Contract Sprint',
+        startDate: '2026-08-01',
+        endDate: '2026-08-14',
+      });
+    expect(cycle.status).toBe(201);
+    expect(cycle.body).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        teamId: teams.body.id,
+        name: 'Contract Sprint',
+        startDate: '2026-08-01',
+        endDate: '2026-08-14',
+      }),
+    );
+
+    const capacity = await request(app.getHttpServer())
+      .post('/api/v1/capacity-plans')
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({
+        teamId: teams.body.id,
+        planningCycleId: cycle.body.id,
+        plannedHours: 240,
+      });
+    expect(capacity.status).toBe(201);
+    expect(capacity.body).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        teamId: teams.body.id,
+        planningCycleId: cycle.body.id,
+        plannedHours: 240,
+      }),
+    );
+
+    const capacityList = await request(app.getHttpServer())
+      .get(`/api/v1/capacity-plans?teamId=${teams.body.id}&planningCycleId=${cycle.body.id}`)
+      .set('Authorization', `Bearer ${leadToken}`);
+    expect(capacityList.status).toBe(200);
+    expect(capacityList.body).toEqual(
+      expect.objectContaining({
+        items: expect.any(Array),
+        page: expect.any(Number),
+        pageSize: expect.any(Number),
+        total: expect.any(Number),
+      }),
+    );
+
+    const portfolio = await request(app.getHttpServer())
+      .get(
+        `/api/v1/dashboards/portfolio?organizationId=${org.body.id}&dateFrom=2026-08-01&dateTo=2026-08-31`,
+      )
+      .set('Authorization', `Bearer ${executiveToken}`);
+    expect(portfolio.status).toBe(200);
+    expect(portfolio.body).toEqual(
+      expect.objectContaining({
+        summaryTiles: expect.any(Array),
+      }),
+    );
+    expect(portfolio.body.summaryTiles.length).toBe(4);
+    expect(portfolio.body.summaryTiles[0]).toEqual(
+      expect.objectContaining({
+        metricId: expect.any(String),
+        label: expect.any(String),
+        value: expect.any(Number),
+        trendDirection: expect.stringMatching(/^(up|down|flat)$/),
+        status: expect.stringMatching(/^(green|amber|red)$/),
+      }),
+    );
+  });
+});

@@ -17,6 +17,7 @@ jobs:
       - run: npm install
       - run: npm run lint -w backend
       - run: npm run test -w backend
+      - run: npm run test:contract -w backend
 
   frontend:
     runs-on: ubuntu-latest
