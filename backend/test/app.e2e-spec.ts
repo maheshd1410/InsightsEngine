@@ -333,4 +333,56 @@ describe('App (e2e)', () => {
     expect(capTile).toBeDefined();
     expect(capTile.value).toBe(420);
   });
+
+  it('/api/v1/action-items (POST/GET) with status filter + RBAC', async () => {
+    const adminToken = createToken('admin');
+    const managerToken = createToken('engineering_manager');
+    const leadToken = createToken('team_lead');
+    const executiveToken = createToken('executive');
+
+    const executiveCreateForbidden = await request(app.getHttpServer())
+      .post('/api/v1/action-items')
+      .set('Authorization', `Bearer ${executiveToken}`)
+      .send({
+        title: 'Do not allow',
+        ownerUserId: '11111111-1111-4111-8111-111111111111',
+        dueDate: '2026-09-01',
+        status: 'open',
+      });
+    expect(executiveCreateForbidden.status).toBe(403);
+
+    const createOpen = await request(app.getHttpServer())
+      .post('/api/v1/action-items')
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({
+        title: 'Fix API bug',
+        ownerUserId: '11111111-1111-4111-8111-111111111111',
+        dueDate: '2026-09-01',
+        status: 'open',
+      });
+    expect(createOpen.status).toBe(201);
+    expect(createOpen.body.status).toBe('open');
+
+    const createDone = await request(app.getHttpServer())
+      .post('/api/v1/action-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        title: 'Close old issue',
+        ownerUserId: '11111111-1111-4111-8111-111111111111',
+        dueDate: '2026-09-02',
+        status: 'done',
+      });
+    expect(createDone.status).toBe(201);
+    expect(createDone.body.status).toBe('done');
+
+    const leadList = await request(app.getHttpServer())
+      .get('/api/v1/action-items?status=open&page=1&pageSize=10')
+      .set('Authorization', `Bearer ${leadToken}`);
+    expect(leadList.status).toBe(200);
+    expect(leadList.body.total).toBeGreaterThanOrEqual(1);
+    expect(leadList.body.items[0].status).toBe('open');
+
+    const noAuth = await request(app.getHttpServer()).get('/api/v1/action-items');
+    expect(noAuth.status).toBe(401);
+  });
 });

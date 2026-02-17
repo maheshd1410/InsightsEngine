@@ -169,5 +169,38 @@ describe('Implemented API contracts', () => {
         status: expect.stringMatching(/^(green|amber|red)$/),
       }),
     );
+
+    const actionItem = await request(app.getHttpServer())
+      .post('/api/v1/action-items')
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({
+        title: 'Contract action item',
+        ownerUserId: '11111111-1111-4111-8111-111111111111',
+        dueDate: '2026-10-01',
+        status: 'open',
+      });
+    expect(actionItem.status).toBe(201);
+    expect(actionItem.body).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        title: 'Contract action item',
+        ownerUserId: '11111111-1111-4111-8111-111111111111',
+        dueDate: '2026-10-01',
+        status: 'open',
+      }),
+    );
+
+    const actionItemsList = await request(app.getHttpServer())
+      .get('/api/v1/action-items?status=open&page=1&pageSize=10')
+      .set('Authorization', `Bearer ${leadToken}`);
+    expect(actionItemsList.status).toBe(200);
+    expect(actionItemsList.body).toEqual(
+      expect.objectContaining({
+        items: expect.any(Array),
+        page: expect.any(Number),
+        pageSize: expect.any(Number),
+        total: expect.any(Number),
+      }),
+    );
   });
 });
