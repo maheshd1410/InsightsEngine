@@ -8,5 +8,6 @@ import { CapacityPlansService } from './capacity-plans.service';
   imports: [PlanningCyclesModule, TeamsModule],
   controllers: [CapacityPlansController],
   providers: [CapacityPlansService],
+  exports: [CapacityPlansService],
 })
 export class CapacityPlansModule {}

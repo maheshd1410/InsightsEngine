@@ -13,6 +13,10 @@ export class PlanningCyclesService {
 
   constructor(private readonly teamsService: TeamsService) {}
 
+  listAll(): PlanningCycle[] {
+    return [...this.planningCycles];
+  }
+
   list(
     page: number,
     pageSize: number,

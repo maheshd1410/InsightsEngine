@@ -5,6 +5,7 @@ import { OrganizationsModule } from './organizations/organizations.module';
 import { TeamsModule } from './teams/teams.module';
 import { PlanningCyclesModule } from './planning-cycles/planning-cycles.module';
 import { CapacityPlansModule } from './capacity-plans/capacity-plans.module';
+import { DashboardsModule } from './dashboards/dashboards.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 
@@ -15,6 +16,7 @@ import { RolesGuard } from './auth/roles.guard';
     TeamsModule,
     PlanningCyclesModule,
     CapacityPlansModule,
+    DashboardsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

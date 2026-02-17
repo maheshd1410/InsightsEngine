@@ -9,6 +9,10 @@ export class TeamsService {
 
   constructor(private readonly organizationsService: OrganizationsService) {}
 
+  listAll(): Team[] {
+    return [...this.teams];
+  }
+
   list(page: number, pageSize: number, organizationId?: string): TeamListResponse {
     const filtered = organizationId
       ? this.teams.filter((team) => team.organizationId === organizationId)

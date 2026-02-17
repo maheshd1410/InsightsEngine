@@ -270,4 +270,67 @@ describe('App (e2e)', () => {
       });
     expect(badHours.status).toBe(400);
   });
+
+  it('/api/v1/dashboards/portfolio (GET) with filters + RBAC', async () => {
+    const adminToken = createToken('admin');
+    const managerToken = createToken('engineering_manager');
+    const executiveToken = createToken('executive');
+    const leadToken = createToken('team_lead');
+
+    const org = await request(app.getHttpServer())
+      .post('/api/v1/organizations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Dashboard Org', code: 'dsh' });
+    expect(org.status).toBe(201);
+
+    const team = await request(app.getHttpServer())
+      .post('/api/v1/teams')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ organizationId: org.body.id, name: 'Dashboard Team' });
+    expect(team.status).toBe(201);
+
+    const cycle = await request(app.getHttpServer())
+      .post('/api/v1/planning-cycles')
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({
+        teamId: team.body.id,
+        name: 'Sprint 30',
+        startDate: '2026-07-01',
+        endDate: '2026-07-14',
+      });
+    expect(cycle.status).toBe(201);
+
+    const cap = await request(app.getHttpServer())
+      .post('/api/v1/capacity-plans')
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({
+        teamId: team.body.id,
+        planningCycleId: cycle.body.id,
+        plannedHours: 420,
+      });
+    expect(cap.status).toBe(201);
+
+    const forbiddenLead = await request(app.getHttpServer())
+      .get(`/api/v1/dashboards/portfolio?organizationId=${org.body.id}`)
+      .set('Authorization', `Bearer ${leadToken}`);
+    expect(forbiddenLead.status).toBe(403);
+
+    const noAuth = await request(app.getHttpServer()).get('/api/v1/dashboards/portfolio');
+    expect(noAuth.status).toBe(401);
+
+    const executiveView = await request(app.getHttpServer())
+      .get(
+        `/api/v1/dashboards/portfolio?organizationId=${org.body.id}&dateFrom=2026-07-01&dateTo=2026-07-31`,
+      )
+      .set('Authorization', `Bearer ${executiveToken}`);
+    expect(executiveView.status).toBe(200);
+    expect(Array.isArray(executiveView.body.summaryTiles)).toBe(true);
+    expect(executiveView.body.summaryTiles.length).toBe(4);
+
+    const capTile = executiveView.body.summaryTiles.find(
+      (tile: { metricId: string; value: number }) => tile.metricId === 'CAP-HOURS',
+    );
+    expect(capTile).toBeDefined();
+    expect(capTile.value).toBe(420);
+  });
 });

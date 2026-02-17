@@ -11,6 +11,10 @@ import {
 export class OrganizationsService {
   private readonly organizations: Organization[] = [];
 
+  listAll(): Organization[] {
+    return [...this.organizations];
+  }
+
   list(page: number, pageSize: number): OrganizationListResponse {
     const start = (page - 1) * pageSize;
     const end = start + pageSize;

@@ -17,6 +17,10 @@ export class CapacityPlansService {
     private readonly teamsService: TeamsService,
   ) {}
 
+  listAll(): CapacityPlan[] {
+    return [...this.capacityPlans];
+  }
+
   list(
     page: number,
     pageSize: number,
