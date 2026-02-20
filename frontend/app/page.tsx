@@ -63,6 +63,17 @@ type ApiError = {
   correlationId?: string;
 };
 
+type LoginResponse = {
+  accessToken: string;
+  expiresInSeconds: number;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    role: 'admin' | 'engineering_manager' | 'team_lead' | 'executive';
+  };
+};
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3000/api/v1';
 const TOKEN_STORAGE_KEY = 'insights_engine_bearer_token';
@@ -98,6 +109,10 @@ export default function HomePage() {
   const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
   const [bearerToken, setBearerToken] = useState('');
   const [tokenMessage, setTokenMessage] = useState('Token not set.');
+  const [loginEmail, setLoginEmail] = useState('admin@insights.local');
+  const [loginPassword, setLoginPassword] = useState('Admin@123');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const [organizations, setOrganizations] = useState<ListResponse<Organization>>(defaultList());
   const [teams, setTeams] = useState<ListResponse<Team>>(defaultList());
@@ -297,6 +312,33 @@ export default function HomePage() {
     window.localStorage.removeItem(TOKEN_STORAGE_KEY);
     setTokenMessage('Token cleared from local session.');
     setLookupError('Save a valid JWT token before loading reference data.');
+  };
+
+  const signInWithPassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLoginLoading(true);
+    setLoginError(null);
+    try {
+      const payload = await apiRequest<LoginResponse>('/auth/login', {
+        method: 'POST',
+        skipAuth: true,
+        body: JSON.stringify({
+          email: loginEmail.trim(),
+          password: loginPassword.trim(),
+        }),
+      });
+      const normalized = normalizeToken(payload.accessToken);
+      setBearerToken(normalized);
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(TOKEN_STORAGE_KEY, normalized);
+      }
+      setTokenMessage(`Signed in as ${payload.user.name} (${payload.user.role}).`);
+      await bootstrapLookups('Signed in and reference data loaded.');
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : 'Unable to sign in.');
+    } finally {
+      setLoginLoading(false);
+    }
   };
 
   const apiRequest = useCallback(
@@ -733,21 +775,45 @@ export default function HomePage() {
             </button>
           </div>
 
-          <div style={styles.tokenRow}>
+          <form style={styles.loginRow} onSubmit={signInWithPassword}>
+            <input
+              style={styles.input}
+              type="email"
+              value={loginEmail}
+              onChange={(event) => setLoginEmail(event.target.value)}
+              placeholder="Email"
+              required
+            />
             <input
               style={styles.input}
               type="password"
-              value={bearerToken}
-              onChange={(event) => setBearerToken(event.target.value)}
-              placeholder="Paste JWT token"
+              value={loginPassword}
+              onChange={(event) => setLoginPassword(event.target.value)}
+              placeholder="Password"
+              required
             />
-            <button style={styles.secondaryButton} type="button" onClick={persistToken}>
-              Save Token
+            <button style={styles.ctaButton} type="submit" disabled={loginLoading}>
+              {loginLoading ? 'Signing in...' : 'Sign In'}
             </button>
             <button style={styles.secondaryButton} type="button" onClick={validateApiConnection}>
               Test API
             </button>
-          </div>
+          </form>
+          {loginError && <small style={styles.errorText}>{loginError}</small>}
+          {showTechnicalDetails && (
+            <div style={styles.tokenRow}>
+              <input
+                style={styles.input}
+                type="password"
+                value={bearerToken}
+                onChange={(event) => setBearerToken(event.target.value)}
+                placeholder="Manual JWT token override"
+              />
+              <button style={styles.secondaryButton} type="button" onClick={persistToken}>
+                Save Token
+              </button>
+            </div>
+          )}
           <small style={styles.hint}>{tokenMessage}</small>
           {showTechnicalDetails && (
             <small style={styles.hint}>API base: {NORMALIZED_API_BASE_URL}</small>
@@ -1391,7 +1457,12 @@ const styles: Record<string, CSSProperties> = {
   },
   tokenRow: {
     display: 'grid',
-    gridTemplateColumns: 'minmax(220px, 1fr) auto auto',
+    gridTemplateColumns: 'minmax(220px, 1fr) auto',
+    gap: 8,
+  },
+  loginRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(180px, 1fr) minmax(180px, 1fr) auto auto',
     gap: 8,
   },
   sectionTitle: {

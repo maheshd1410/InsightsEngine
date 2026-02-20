@@ -7,6 +7,7 @@ import { PlanningCyclesModule } from './planning-cycles/planning-cycles.module';
 import { CapacityPlansModule } from './capacity-plans/capacity-plans.module';
 import { DashboardsModule } from './dashboards/dashboards.module';
 import { ActionItemsModule } from './action-items/action-items.module';
+import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 
@@ -19,6 +20,7 @@ import { RolesGuard } from './auth/roles.guard';
     CapacityPlansModule,
     DashboardsModule,
     ActionItemsModule,
+    AuthModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

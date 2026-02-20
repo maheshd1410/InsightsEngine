@@ -46,6 +46,41 @@ describe('App (e2e)', () => {
     expect(response.body.status).toBe('ok');
   });
 
+  it('/api/v1/auth/login (POST) returns token for valid user', async () => {
+    const response = await request(app.getHttpServer()).post('/api/v1/auth/login').send({
+      email: 'admin@insights.local',
+      password: 'Admin@123',
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        accessToken: expect.any(String),
+        expiresInSeconds: expect.any(Number),
+        user: expect.objectContaining({
+          email: 'admin@insights.local',
+          role: 'admin',
+        }),
+      }),
+    );
+  });
+
+  it('/api/v1/auth/login (POST) rejects invalid credentials', async () => {
+    const response = await request(app.getHttpServer()).post('/api/v1/auth/login').send({
+      email: 'admin@insights.local',
+      password: 'wrong-password',
+    });
+
+    expect(response.status).toBe(401);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        statusCode: 401,
+        code: 'UNAUTHORIZED',
+        message: expect.any(String),
+      }),
+    );
+  });
+
   it('/api/v1/organizations (GET) returns 401 without token', async () => {
     const response = await request(app.getHttpServer()).get('/api/v1/organizations');
     expect(response.status).toBe(401);

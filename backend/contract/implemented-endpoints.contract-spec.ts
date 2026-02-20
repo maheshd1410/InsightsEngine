@@ -53,6 +53,27 @@ describe('Implemented API contracts', () => {
     );
   });
 
+  it('POST /api/v1/auth/login contract', async () => {
+    const response = await request(app.getHttpServer()).post('/api/v1/auth/login').send({
+      email: 'manager@insights.local',
+      password: 'Manager@123',
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        accessToken: expect.any(String),
+        expiresInSeconds: expect.any(Number),
+        user: expect.objectContaining({
+          id: expect.any(String),
+          email: 'manager@insights.local',
+          name: expect.any(String),
+          role: 'engineering_manager',
+        }),
+      }),
+    );
+  });
+
   it('GET /api/v1/organizations unauthorized contract', async () => {
     const response = await request(app.getHttpServer()).get('/api/v1/organizations');
 
