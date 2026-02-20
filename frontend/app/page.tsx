@@ -1,10 +1,10 @@
 'use client';
 
-import { CSSProperties, FormEvent, useEffect, useMemo, useState } from 'react';
+import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 type TrendDirection = 'up' | 'down' | 'flat';
 type TileStatus = 'green' | 'amber' | 'red';
-type ActionStatus = 'open' | 'in_progress' | 'blocked' | 'done';
+type WorkspaceTab = 'dashboard' | 'planning';
 
 type SummaryTile = {
   metricId: string;
@@ -24,14 +24,12 @@ type Organization = {
   id: string;
   name: string;
   code: string;
-  isActive: boolean;
 };
 
 type Team = {
   id: string;
   organizationId: string;
   name: string;
-  isActive: boolean;
 };
 
 type PlanningCycle = {
@@ -60,11 +58,13 @@ type ApiError = {
   statusCode?: number;
   message?: string | string[];
   error?: string;
+  correlationId?: string;
 };
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3000/api/v1';
 const TOKEN_STORAGE_KEY = 'insights_engine_bearer_token';
+const NORMALIZED_API_BASE_URL = API_BASE_URL.replace(/\/+$/, '');
 
 const statusColorMap: Record<TileStatus, string> = {
   green: '#2f8f5b',
@@ -72,10 +72,10 @@ const statusColorMap: Record<TileStatus, string> = {
   red: '#b3261e',
 };
 
-const trendSymbolMap: Record<TrendDirection, string> = {
-  up: '↑',
-  down: '↓',
-  flat: '→',
+const trendLabelMap: Record<TrendDirection, string> = {
+  up: 'Up',
+  down: 'Down',
+  flat: 'Flat',
 };
 
 const defaultList = <T,>(): ListResponse<T> => ({
@@ -85,521 +85,633 @@ const defaultList = <T,>(): ListResponse<T> => ({
   total: 0,
 });
 
-export default function HomePage() {
-  const [bearerToken, setBearerToken] = useState('');
-  const [sessionMessage, setSessionMessage] = useState('Token not set.');
+const normalizeToken = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.toLowerCase().startsWith('bearer ') ? trimmed.slice(7).trim() : trimmed;
+};
 
-  const [organizationId, setOrganizationId] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [portfolioData, setPortfolioData] = useState<PortfolioDashboardResponse | null>(null);
-  const [portfolioLoading, setPortfolioLoading] = useState(false);
-  const [portfolioError, setPortfolioError] = useState<string | null>(null);
+export default function HomePage() {
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>('dashboard');
+  const [showTechnicalDetails, setShowTechnicalDetails] = useState(false);
+  const [bearerToken, setBearerToken] = useState('');
+  const [tokenMessage, setTokenMessage] = useState('Token not set.');
 
   const [organizations, setOrganizations] = useState<ListResponse<Organization>>(defaultList());
   const [teams, setTeams] = useState<ListResponse<Team>>(defaultList());
-  const [planningCycles, setPlanningCycles] = useState<ListResponse<PlanningCycle>>(defaultList());
+  const [cycles, setCycles] = useState<ListResponse<PlanningCycle>>(defaultList());
   const [capacityPlans, setCapacityPlans] = useState<ListResponse<CapacityPlan>>(defaultList());
+
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState('');
+  const [selectedTeamId, setSelectedTeamId] = useState('');
+  const [selectedCycleId, setSelectedCycleId] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  const [newCycleName, setNewCycleName] = useState('');
+  const [newCycleStartDate, setNewCycleStartDate] = useState('');
+  const [newCycleEndDate, setNewCycleEndDate] = useState('');
+  const [newCapacityHours, setNewCapacityHours] = useState('');
+
+  const [portfolioData, setPortfolioData] = useState<PortfolioDashboardResponse | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
 
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
-  const [workspaceSuccess, setWorkspaceSuccess] = useState<string | null>(null);
-
-  const [teamCreateOrganizationId, setTeamCreateOrganizationId] = useState('');
-  const [teamCreateName, setTeamCreateName] = useState('');
-  const [teamFilterOrganizationId, setTeamFilterOrganizationId] = useState('');
-
-  const [cycleCreateTeamId, setCycleCreateTeamId] = useState('');
-  const [cycleCreateName, setCycleCreateName] = useState('');
-  const [cycleCreateStartDate, setCycleCreateStartDate] = useState('');
-  const [cycleCreateEndDate, setCycleCreateEndDate] = useState('');
-  const [cycleFilterTeamId, setCycleFilterTeamId] = useState('');
-  const [cycleFilterDateFrom, setCycleFilterDateFrom] = useState('');
-  const [cycleFilterDateTo, setCycleFilterDateTo] = useState('');
-
-  const [capCreateTeamId, setCapCreateTeamId] = useState('');
-  const [capCreatePlanningCycleId, setCapCreatePlanningCycleId] = useState('');
-  const [capCreatePlannedHours, setCapCreatePlannedHours] = useState('');
-  const [capFilterTeamId, setCapFilterTeamId] = useState('');
-  const [capFilterPlanningCycleId, setCapFilterPlanningCycleId] = useState('');
-
-  const hasTiles = (portfolioData?.summaryTiles?.length ?? 0) > 0;
-  const tileCountLabel = useMemo(() => {
-    const count = portfolioData?.summaryTiles?.length ?? 0;
-    return `${count} metric${count === 1 ? '' : 's'}`;
-  }, [portfolioData]);
+  const [workspaceMessage, setWorkspaceMessage] = useState<string | null>(null);
+  const [requestDebug, setRequestDebug] = useState('No requests yet.');
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [lookupMessage, setLookupMessage] = useState<string | null>(null);
+  const [lastLookupAt, setLastLookupAt] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
-    const token = window.localStorage.getItem(TOKEN_STORAGE_KEY) ?? '';
+    const token = normalizeToken(window.localStorage.getItem(TOKEN_STORAGE_KEY) ?? '');
     if (token) {
       setBearerToken(token);
-      setSessionMessage('Token restored from local session.');
+      setTokenMessage('Token restored from local session.');
     }
   }, []);
+
+  const organizationOptions = organizations.items;
+
+  const teamOptions = useMemo(() => {
+    if (!selectedOrganizationId) return teams.items;
+    return teams.items.filter((team) => team.organizationId === selectedOrganizationId);
+  }, [selectedOrganizationId, teams.items]);
+
+  const cycleOptions = useMemo(() => {
+    if (!selectedTeamId) return cycles.items;
+    return cycles.items.filter((cycle) => cycle.teamId === selectedTeamId);
+  }, [selectedTeamId, cycles.items]);
+
+  const selectedOrganization = useMemo(
+    () => organizations.items.find((org) => org.id === selectedOrganizationId) ?? null,
+    [organizations.items, selectedOrganizationId],
+  );
+
+  const selectedTeam = useMemo(
+    () => teams.items.find((team) => team.id === selectedTeamId) ?? null,
+    [teams.items, selectedTeamId],
+  );
+
+  const selectedCycle = useMemo(
+    () => cycles.items.find((cycle) => cycle.id === selectedCycleId) ?? null,
+    [cycles.items, selectedCycleId],
+  );
+
+  const tileCount = portfolioData?.summaryTiles.length ?? 0;
 
   const persistToken = () => {
     if (typeof window === 'undefined') {
       return;
     }
-    if (bearerToken.trim()) {
-      window.localStorage.setItem(TOKEN_STORAGE_KEY, bearerToken.trim());
-      setSessionMessage('Token saved in local session.');
+    const normalized = normalizeToken(bearerToken);
+    if (normalized) {
+      setBearerToken(normalized);
+      window.localStorage.setItem(TOKEN_STORAGE_KEY, normalized);
+      setTokenMessage('Token saved in local session.');
+      setLookupError(null);
       return;
     }
     window.localStorage.removeItem(TOKEN_STORAGE_KEY);
-    setSessionMessage('Token cleared from local session.');
+    setTokenMessage('Token cleared from local session.');
+    setLookupError('Save a valid JWT token before loading reference data.');
   };
 
-  const apiRequest = async <T,>(
-    path: string,
-    options?: RequestInit & { skipAuth?: boolean },
-  ): Promise<T> => {
-    const headers = new Headers(options?.headers ?? {});
-    headers.set('Content-Type', 'application/json');
+  const apiRequest = useCallback(
+    async <T,>(path: string, options?: RequestInit & { skipAuth?: boolean }): Promise<T> => {
+      const headers = new Headers(options?.headers ?? {});
+      headers.set('Content-Type', 'application/json');
 
-    if (!options?.skipAuth && bearerToken.trim()) {
-      headers.set('Authorization', `Bearer ${bearerToken.trim()}`);
-    }
+      const normalized = normalizeToken(bearerToken);
+      if (!options?.skipAuth && normalized) {
+        headers.set('Authorization', `Bearer ${normalized}`);
+      }
 
-    const response = await fetch(`${API_BASE_URL}${path}`, {
-      ...options,
-      headers,
-      cache: 'no-store',
-    });
+      const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+      const requestUrl = `${NORMALIZED_API_BASE_URL}${normalizedPath}`;
+      setRequestDebug(requestUrl);
 
-    const payloadText = await response.text();
-    const payloadJson = payloadText ? (JSON.parse(payloadText) as unknown) : null;
+      let response: Response;
+      try {
+        response = await fetch(requestUrl, {
+          ...options,
+          headers,
+          cache: 'no-store',
+        });
+      } catch {
+        throw new Error(`Failed to reach API at ${requestUrl}`);
+      }
 
-    if (!response.ok) {
-      const errorPayload = payloadJson as ApiError | null;
-      const message =
-        typeof errorPayload?.message === 'string'
-          ? errorPayload.message
-          : Array.isArray(errorPayload?.message)
-            ? errorPayload.message.join(', ')
-            : `Request failed with ${response.status}`;
-      throw new Error(message);
-    }
+      const payloadText = await response.text();
+      const payloadJson = payloadText ? (JSON.parse(payloadText) as unknown) : null;
 
-    return payloadJson as T;
+      if (!response.ok) {
+        const errorPayload = payloadJson as ApiError | null;
+        const message =
+          typeof errorPayload?.message === 'string'
+            ? errorPayload.message
+            : Array.isArray(errorPayload?.message)
+              ? errorPayload.message.join(', ')
+              : `Request failed with ${response.status}`;
+        throw new Error(message);
+      }
+
+      return payloadJson as T;
+    },
+    [bearerToken],
+  );
+
+  const runWorkspaceAction = useCallback(
+    async (action: () => Promise<void>, successMessage: string): Promise<void> => {
+      setWorkspaceError(null);
+      setWorkspaceMessage(null);
+      setWorkspaceLoading(true);
+      try {
+        await action();
+        setWorkspaceMessage(successMessage);
+      } catch (error) {
+        setWorkspaceError(error instanceof Error ? error.message : 'Unexpected error.');
+      } finally {
+        setWorkspaceLoading(false);
+      }
+    },
+    [],
+  );
+
+  const validateApiConnection = async () => {
+    await runWorkspaceAction(async () => {
+      await apiRequest<ListResponse<Organization>>('/organizations?page=1&pageSize=1');
+    }, 'API connection check passed.');
   };
 
-  const fetchPortfolioDashboard = async (event: FormEvent<HTMLFormElement>) => {
+  const bootstrapLookups = useCallback(
+    async (successMessage = 'Reference data loaded.') => {
+      const normalized = normalizeToken(bearerToken);
+      if (!normalized) {
+        setLookupError('No token found. Paste JWT and click Save Token.');
+        setLookupMessage(null);
+        return;
+      }
+
+      setLookupLoading(true);
+      setLookupError(null);
+      setLookupMessage(null);
+      try {
+        const [orgPayload, teamPayload, cyclePayload] = await Promise.all([
+          apiRequest<ListResponse<Organization>>('/organizations?page=1&pageSize=100'),
+          apiRequest<ListResponse<Team>>('/teams?page=1&pageSize=100'),
+          apiRequest<ListResponse<PlanningCycle>>('/planning-cycles?page=1&pageSize=100'),
+        ]);
+        setOrganizations(orgPayload);
+        setTeams(teamPayload);
+        setCycles(cyclePayload);
+        setCapacityPlans(defaultList());
+        const totalLoaded =
+          orgPayload.items.length + teamPayload.items.length + cyclePayload.items.length;
+        if (totalLoaded === 0) {
+          setLookupMessage(
+            'Reference data loaded, but no records exist yet. Create Organization, Team, and Planning Cycle first.',
+          );
+        } else {
+          setLookupMessage(successMessage);
+        }
+        setLastLookupAt(new Date().toLocaleTimeString());
+      } catch (error) {
+        setLookupError(error instanceof Error ? error.message : 'Unexpected lookup error.');
+        setLastLookupAt(new Date().toLocaleTimeString());
+      } finally {
+        setLookupLoading(false);
+      }
+    },
+    [apiRequest, bearerToken],
+  );
+
+  useEffect(() => {
+    const hasToken = normalizeToken(bearerToken).length > 0;
+    if (!hasToken) {
+      return;
+    }
+    void bootstrapLookups('Reference data auto-loaded.');
+  }, [bearerToken, bootstrapLookups]);
+
+  const loadPortfolioDashboard = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setPortfolioLoading(true);
-    setPortfolioError(null);
-
+    setDashboardLoading(true);
+    setDashboardError(null);
     try {
       const query = new URLSearchParams();
-      if (organizationId.trim()) query.set('organizationId', organizationId.trim());
+      if (selectedOrganizationId) query.set('organizationId', selectedOrganizationId);
       if (dateFrom) query.set('dateFrom', dateFrom);
       if (dateTo) query.set('dateTo', dateTo);
-
       const payload = await apiRequest<PortfolioDashboardResponse>(
         `/dashboards/portfolio?${query.toString()}`,
       );
       setPortfolioData(payload);
     } catch (error) {
       setPortfolioData(null);
-      setPortfolioError(error instanceof Error ? error.message : 'Unexpected error.');
+      setDashboardError(error instanceof Error ? error.message : 'Unexpected error.');
     } finally {
-      setPortfolioLoading(false);
+      setDashboardLoading(false);
     }
   };
-
-  const runWorkspaceAction = async (
-    action: () => Promise<void>,
-    successMessage: string,
-  ): Promise<void> => {
-    setWorkspaceError(null);
-    setWorkspaceSuccess(null);
-    setWorkspaceLoading(true);
-    try {
-      await action();
-      setWorkspaceSuccess(successMessage);
-    } catch (error) {
-      setWorkspaceError(error instanceof Error ? error.message : 'Unexpected error.');
-    } finally {
-      setWorkspaceLoading(false);
-    }
-  };
-
-  const loadOrganizations = async () =>
-    runWorkspaceAction(async () => {
-      const payload = await apiRequest<ListResponse<Organization>>('/organizations?page=1&pageSize=100');
-      setOrganizations(payload);
-    }, 'Organizations loaded.');
-
-  const loadTeams = async () =>
-    runWorkspaceAction(async () => {
-      const query = new URLSearchParams({ page: '1', pageSize: '100' });
-      if (teamFilterOrganizationId.trim()) {
-        query.set('organizationId', teamFilterOrganizationId.trim());
-      }
-      const payload = await apiRequest<ListResponse<Team>>(`/teams?${query.toString()}`);
-      setTeams(payload);
-    }, 'Teams loaded.');
-
-  const createTeam = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    await runWorkspaceAction(async () => {
-      await apiRequest<Team>('/teams', {
-        method: 'POST',
-        body: JSON.stringify({
-          organizationId: teamCreateOrganizationId.trim(),
-          name: teamCreateName.trim(),
-        }),
-      });
-      setTeamCreateName('');
-      await loadTeams();
-    }, 'Team created.');
-  };
-
-  const loadPlanningCycles = async () =>
-    runWorkspaceAction(async () => {
-      const query = new URLSearchParams({ page: '1', pageSize: '100' });
-      if (cycleFilterTeamId.trim()) query.set('teamId', cycleFilterTeamId.trim());
-      if (cycleFilterDateFrom) query.set('dateFrom', cycleFilterDateFrom);
-      if (cycleFilterDateTo) query.set('dateTo', cycleFilterDateTo);
-      const payload = await apiRequest<ListResponse<PlanningCycle>>(
-        `/planning-cycles?${query.toString()}`,
-      );
-      setPlanningCycles(payload);
-    }, 'Planning cycles loaded.');
 
   const createPlanningCycle = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!selectedTeamId) {
+      setWorkspaceError('Select a team before creating a planning cycle.');
+      return;
+    }
     await runWorkspaceAction(async () => {
       await apiRequest<PlanningCycle>('/planning-cycles', {
         method: 'POST',
         body: JSON.stringify({
-          teamId: cycleCreateTeamId.trim(),
-          name: cycleCreateName.trim(),
-          startDate: cycleCreateStartDate,
-          endDate: cycleCreateEndDate,
+          teamId: selectedTeamId,
+          name: newCycleName.trim(),
+          startDate: newCycleStartDate,
+          endDate: newCycleEndDate,
         }),
       });
-      setCycleCreateName('');
-      await loadPlanningCycles();
+      setNewCycleName('');
+      setNewCycleStartDate('');
+      setNewCycleEndDate('');
+      const cyclePayload = await apiRequest<ListResponse<PlanningCycle>>(
+        '/planning-cycles?page=1&pageSize=100',
+      );
+      setCycles(cyclePayload);
     }, 'Planning cycle created.');
   };
 
-  const loadCapacityPlans = async () =>
-    runWorkspaceAction(async () => {
-      const query = new URLSearchParams({ page: '1', pageSize: '100' });
-      if (capFilterTeamId.trim()) query.set('teamId', capFilterTeamId.trim());
-      if (capFilterPlanningCycleId.trim()) {
-        query.set('planningCycleId', capFilterPlanningCycleId.trim());
-      }
-      const payload = await apiRequest<ListResponse<CapacityPlan>>(
-        `/capacity-plans?${query.toString()}`,
-      );
-      setCapacityPlans(payload);
-    }, 'Capacity plans loaded.');
-
   const createCapacityPlan = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!selectedTeamId || !selectedCycleId) {
+      setWorkspaceError('Select a team and cycle before creating a capacity plan.');
+      return;
+    }
     await runWorkspaceAction(async () => {
       await apiRequest<CapacityPlan>('/capacity-plans', {
         method: 'POST',
         body: JSON.stringify({
-          teamId: capCreateTeamId.trim(),
-          planningCycleId: capCreatePlanningCycleId.trim(),
-          plannedHours: Number(capCreatePlannedHours),
+          teamId: selectedTeamId,
+          planningCycleId: selectedCycleId,
+          plannedHours: Number(newCapacityHours),
         }),
       });
-      setCapCreatePlannedHours('');
-      await loadCapacityPlans();
+      setNewCapacityHours('');
+      const query = new URLSearchParams({ page: '1', pageSize: '100' });
+      query.set('teamId', selectedTeamId);
+      query.set('planningCycleId', selectedCycleId);
+      const plansPayload = await apiRequest<ListResponse<CapacityPlan>>(
+        `/capacity-plans?${query.toString()}`,
+      );
+      setCapacityPlans(plansPayload);
     }, 'Capacity plan created.');
   };
 
-  const clearWorkspaceMessages = () => {
-    setWorkspaceError(null);
-    setWorkspaceSuccess(null);
+  const loadCapacityPlans = async () => {
+    if (!selectedTeamId || !selectedCycleId) {
+      setWorkspaceError('Select a team and cycle to list capacity plans.');
+      return;
+    }
+    await runWorkspaceAction(async () => {
+      const query = new URLSearchParams({ page: '1', pageSize: '100' });
+      query.set('teamId', selectedTeamId);
+      query.set('planningCycleId', selectedCycleId);
+      const plansPayload = await apiRequest<ListResponse<CapacityPlan>>(
+        `/capacity-plans?${query.toString()}`,
+      );
+      setCapacityPlans(plansPayload);
+    }, 'Capacity plans loaded.');
   };
 
   return (
     <main style={styles.page}>
       <section style={styles.hero}>
-        <p style={styles.kicker}>Insights Engine</p>
-        <h1 style={styles.title}>Portfolio Dashboard + Capacity Workspace</h1>
+        <h1 style={styles.title}>Engineering Insights</h1>
         <p style={styles.subtitle}>
-          FE-002 and FE-003: persistent auth token helper and planning workspace operations.
+          Track key portfolio metrics and update planning data from one compact workspace.
         </p>
       </section>
 
       <section style={styles.panel}>
-        <h2 style={styles.sectionTitle}>Auth Session Helper</h2>
-        <div style={styles.filterGrid}>
-          <label style={styles.fieldWide}>
-            <span style={styles.label}>Bearer Token</span>
+        <div style={styles.toolbar}>
+          <div style={styles.tabs}>
+            <button
+              type="button"
+              style={activeTab === 'dashboard' ? styles.tabActive : styles.tab}
+              onClick={() => setActiveTab('dashboard')}
+            >
+              Portfolio Dashboard
+            </button>
+            <button
+              type="button"
+              style={activeTab === 'planning' ? styles.tabActive : styles.tab}
+              onClick={() => setActiveTab('planning')}
+            >
+              Planning Workspace
+            </button>
+          </div>
+
+          <div style={styles.tokenRow}>
             <input
               style={styles.input}
               type="password"
               value={bearerToken}
-              onChange={(e) => setBearerToken(e.target.value)}
-              placeholder="Paste JWT token for secured APIs"
+              onChange={(event) => setBearerToken(event.target.value)}
+              placeholder="Paste JWT token"
             />
-          </label>
-          <button style={styles.secondaryButton} type="button" onClick={persistToken}>
-            Save / Clear Token
-          </button>
-          <p style={styles.hint}>{sessionMessage}</p>
+            <button style={styles.secondaryButton} type="button" onClick={persistToken}>
+              Save Token
+            </button>
+            <button style={styles.secondaryButton} type="button" onClick={validateApiConnection}>
+              Test API
+            </button>
+          </div>
+          <small style={styles.hint}>{tokenMessage}</small>
+          {showTechnicalDetails && (
+            <small style={styles.hint}>API base: {NORMALIZED_API_BASE_URL}</small>
+          )}
+          {showTechnicalDetails && <small style={styles.hint}>Last request: {requestDebug}</small>}
+          {lastLookupAt && <small style={styles.hint}>Last lookup: {lastLookupAt}</small>}
+          {lookupError && <small style={styles.errorText}>{lookupError}</small>}
+          {lookupMessage && <small style={styles.successText}>{lookupMessage}</small>}
+        </div>
+
+        <div style={styles.filterGrid}>
+          <div style={styles.field}>
+            <label style={styles.label}>Organization</label>
+            <select
+              style={styles.input}
+              value={selectedOrganizationId}
+              onChange={(event) => {
+                setSelectedOrganizationId(event.target.value);
+                setSelectedTeamId('');
+                setSelectedCycleId('');
+              }}
+            >
+              <option value="">All organizations</option>
+              {organizationOptions.map((org) => (
+                <option key={org.id} value={org.id}>
+                  {org.name} ({org.code})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Team</label>
+            <select
+              style={styles.input}
+              value={selectedTeamId}
+              onChange={(event) => {
+                setSelectedTeamId(event.target.value);
+                setSelectedCycleId('');
+              }}
+            >
+              <option value="">All teams</option>
+              {teamOptions.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Cycle</label>
+            <select
+              style={styles.input}
+              value={selectedCycleId}
+              onChange={(event) => setSelectedCycleId(event.target.value)}
+            >
+              <option value="">All cycles</option>
+              {cycleOptions.map((cycle) => (
+                <option key={cycle.id} value={cycle.id}>
+                  {cycle.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Technical</label>
+            <label style={styles.checkbox}>
+              <input
+                type="checkbox"
+                checked={showTechnicalDetails}
+                onChange={(event) => setShowTechnicalDetails(event.target.checked)}
+              />
+              Show IDs
+            </label>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Reference Data</label>
+            <button
+              style={styles.secondaryButton}
+              type="button"
+              onClick={() => void bootstrapLookups()}
+              disabled={lookupLoading}
+            >
+              {lookupLoading ? 'Loading...' : 'Reload Reference Data'}
+            </button>
+            <small style={styles.hint}>
+              Orgs: {organizations.items.length} | Teams: {teams.items.length} | Cycles:{' '}
+              {cycles.items.length}
+            </small>
+          </div>
         </div>
       </section>
 
-      <section style={styles.panel}>
-        <h2 style={styles.sectionTitle}>Portfolio Dashboard (FE-001)</h2>
-        <form style={styles.filterGrid} onSubmit={fetchPortfolioDashboard}>
-          <label style={styles.field}>
-            <span style={styles.label}>Organization ID</span>
-            <input
-              style={styles.input}
-              type="text"
-              value={organizationId}
-              onChange={(e) => setOrganizationId(e.target.value)}
-              placeholder="UUID (optional)"
-            />
-          </label>
-          <label style={styles.field}>
-            <span style={styles.label}>Date From</span>
-            <input
-              style={styles.input}
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
-          </label>
-          <label style={styles.field}>
-            <span style={styles.label}>Date To</span>
-            <input
-              style={styles.input}
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
-          </label>
-          <button type="submit" style={styles.ctaButton} disabled={portfolioLoading}>
-            {portfolioLoading ? 'Loading...' : 'Load Dashboard'}
-          </button>
-        </form>
-
-        <div style={styles.resultPanel}>
-          {portfolioLoading && <div style={styles.infoCard}>Loading portfolio metrics...</div>}
-          {!portfolioLoading && portfolioError && (
-            <div style={{ ...styles.infoCard, ...styles.errorCard }}>
-              <strong>Unable to load dashboard.</strong>
-              <span>{portfolioError}</span>
+      {activeTab === 'dashboard' ? (
+        <section style={styles.panel}>
+          <h2 style={styles.sectionTitle}>Portfolio Dashboard</h2>
+          <form style={styles.formGrid} onSubmit={loadPortfolioDashboard}>
+            <div style={styles.field}>
+              <label style={styles.label}>From</label>
+              <input
+                style={styles.input}
+                type="date"
+                value={dateFrom}
+                onChange={(event) => setDateFrom(event.target.value)}
+              />
             </div>
+            <div style={styles.field}>
+              <label style={styles.label}>To</label>
+              <input
+                style={styles.input}
+                type="date"
+                value={dateTo}
+                onChange={(event) => setDateTo(event.target.value)}
+              />
+            </div>
+            <button style={styles.ctaButton} type="submit" disabled={dashboardLoading}>
+              {dashboardLoading ? 'Loading...' : 'Refresh Dashboard'}
+            </button>
+          </form>
+
+          {dashboardError && <p style={styles.errorText}>{dashboardError}</p>}
+
+          {!dashboardLoading && !dashboardError && !portfolioData && (
+            <p style={styles.hint}>Run dashboard to view KPI tiles.</p>
           )}
-          {!portfolioLoading && !portfolioError && portfolioData && !hasTiles && (
-            <div style={styles.infoCard}>No KPI tiles returned for current filters.</div>
+
+          {!dashboardLoading && portfolioData && tileCount === 0 && (
+            <p style={styles.hint}>No metrics found for the selected filters.</p>
           )}
-          {!portfolioLoading && !portfolioError && portfolioData && hasTiles && (
-            <>
-              <div style={styles.metaRow}>
-                <strong>{tileCountLabel}</strong>
-                <span>
-                  {portfolioData.dateFrom ?? 'No start'} to {portfolioData.dateTo ?? 'No end'}
-                </span>
-              </div>
+
+          {!dashboardLoading && portfolioData && tileCount > 0 && (
+            <div>
+              <p style={styles.hint}>
+                Showing {tileCount} metric{tileCount === 1 ? '' : 's'}.
+              </p>
               <div style={styles.tileGrid}>
                 {portfolioData.summaryTiles.map((tile) => (
                   <article key={tile.metricId} style={styles.tileCard}>
-                    <header style={styles.tileHeader}>
+                    <div style={styles.tileHeader}>
                       <span
                         style={{
                           ...styles.statusDot,
                           backgroundColor: statusColorMap[tile.status],
                         }}
                       />
-                      <span style={styles.metricId}>{tile.metricId}</span>
-                    </header>
-                    <h3 style={styles.tileLabel}>{tile.label}</h3>
+                      <p style={styles.tileLabel}>{tile.label}</p>
+                    </div>
                     <p style={styles.tileValue}>{tile.value}</p>
                     <p style={styles.tileFooter}>
-                      {trendSymbolMap[tile.trendDirection]} {tile.trendDirection} · {tile.status}
+                      Trend: {trendLabelMap[tile.trendDirection]} | Status: {tile.status}
                     </p>
+                    {showTechnicalDetails && <p style={styles.techText}>Metric ID: {tile.metricId}</p>}
                   </article>
                 ))}
               </div>
-            </>
+            </div>
           )}
-        </div>
-      </section>
-
-      <section style={styles.panel}>
-        <h2 style={styles.sectionTitle}>Capacity Planning Workspace (FE-003)</h2>
-        {workspaceLoading && <p style={styles.hint}>Executing request...</p>}
-        {workspaceError && <p style={styles.errorText}>Error: {workspaceError}</p>}
-        {workspaceSuccess && <p style={styles.successText}>{workspaceSuccess}</p>}
-
-        <div style={styles.workspaceBlock}>
-          <h3 style={styles.blockTitle}>Organizations (Reference)</h3>
-          <button style={styles.secondaryButton} type="button" onClick={loadOrganizations}>
-            Load Organizations
-          </button>
-          <small style={styles.hint}>{organizations.total} records</small>
-          <pre style={styles.pre}>{JSON.stringify(organizations.items, null, 2)}</pre>
-        </div>
-
-        <div style={styles.workspaceBlock}>
-          <h3 style={styles.blockTitle}>Teams</h3>
-          <form style={styles.formRow} onSubmit={createTeam}>
-            <input
-              style={styles.input}
-              type="text"
-              value={teamCreateOrganizationId}
-              onChange={(e) => setTeamCreateOrganizationId(e.target.value)}
-              placeholder="organizationId"
-            />
-            <input
-              style={styles.input}
-              type="text"
-              value={teamCreateName}
-              onChange={(e) => setTeamCreateName(e.target.value)}
-              placeholder="team name"
-            />
-            <button style={styles.ctaButton} type="submit">
-              Create Team
-            </button>
-          </form>
-          <div style={styles.formRow}>
-            <input
-              style={styles.input}
-              type="text"
-              value={teamFilterOrganizationId}
-              onChange={(e) => setTeamFilterOrganizationId(e.target.value)}
-              placeholder="filter organizationId (optional)"
-            />
-            <button style={styles.secondaryButton} type="button" onClick={loadTeams}>
-              Load Teams
+        </section>
+      ) : (
+        <section style={styles.panel}>
+          <div style={styles.headerRow}>
+            <h2 style={styles.sectionTitle}>Planning Workspace</h2>
+            <button
+              style={styles.secondaryButton}
+              type="button"
+              onClick={() => void bootstrapLookups()}
+              disabled={lookupLoading}
+            >
+              Load Reference Data
             </button>
           </div>
-          <small style={styles.hint}>{teams.total} records</small>
-          <pre style={styles.pre}>{JSON.stringify(teams.items, null, 2)}</pre>
-        </div>
 
-        <div style={styles.workspaceBlock}>
-          <h3 style={styles.blockTitle}>Planning Cycles</h3>
-          <form style={styles.formGrid} onSubmit={createPlanningCycle}>
-            <input
-              style={styles.input}
-              type="text"
-              value={cycleCreateTeamId}
-              onChange={(e) => setCycleCreateTeamId(e.target.value)}
-              placeholder="teamId"
-            />
-            <input
-              style={styles.input}
-              type="text"
-              value={cycleCreateName}
-              onChange={(e) => setCycleCreateName(e.target.value)}
-              placeholder="cycle name"
-            />
-            <input
-              style={styles.input}
-              type="date"
-              value={cycleCreateStartDate}
-              onChange={(e) => setCycleCreateStartDate(e.target.value)}
-            />
-            <input
-              style={styles.input}
-              type="date"
-              value={cycleCreateEndDate}
-              onChange={(e) => setCycleCreateEndDate(e.target.value)}
-            />
-            <button style={styles.ctaButton} type="submit">
-              Create Cycle
-            </button>
-          </form>
-          <div style={styles.formGrid}>
-            <input
-              style={styles.input}
-              type="text"
-              value={cycleFilterTeamId}
-              onChange={(e) => setCycleFilterTeamId(e.target.value)}
-              placeholder="filter teamId"
-            />
-            <input
-              style={styles.input}
-              type="date"
-              value={cycleFilterDateFrom}
-              onChange={(e) => setCycleFilterDateFrom(e.target.value)}
-            />
-            <input
-              style={styles.input}
-              type="date"
-              value={cycleFilterDateTo}
-              onChange={(e) => setCycleFilterDateTo(e.target.value)}
-            />
-            <button style={styles.secondaryButton} type="button" onClick={loadPlanningCycles}>
-              Load Cycles
-            </button>
-          </div>
-          <small style={styles.hint}>{planningCycles.total} records</small>
-          <pre style={styles.pre}>{JSON.stringify(planningCycles.items, null, 2)}</pre>
-        </div>
+          {workspaceError && <p style={styles.errorText}>{workspaceError}</p>}
+          {workspaceMessage && <p style={styles.successText}>{workspaceMessage}</p>}
 
-        <div style={styles.workspaceBlock}>
-          <h3 style={styles.blockTitle}>Capacity Plans</h3>
-          <form style={styles.formGrid} onSubmit={createCapacityPlan}>
-            <input
-              style={styles.input}
-              type="text"
-              value={capCreateTeamId}
-              onChange={(e) => setCapCreateTeamId(e.target.value)}
-              placeholder="teamId"
-            />
-            <input
-              style={styles.input}
-              type="text"
-              value={capCreatePlanningCycleId}
-              onChange={(e) => setCapCreatePlanningCycleId(e.target.value)}
-              placeholder="planningCycleId"
-            />
-            <input
-              style={styles.input}
-              type="number"
-              value={capCreatePlannedHours}
-              onChange={(e) => setCapCreatePlannedHours(e.target.value)}
-              placeholder="plannedHours"
-              min={0}
-              step={1}
-            />
-            <button style={styles.ctaButton} type="submit">
-              Create Capacity Plan
-            </button>
-          </form>
-          <div style={styles.formGrid}>
-            <input
-              style={styles.input}
-              type="text"
-              value={capFilterTeamId}
-              onChange={(e) => setCapFilterTeamId(e.target.value)}
-              placeholder="filter teamId"
-            />
-            <input
-              style={styles.input}
-              type="text"
-              value={capFilterPlanningCycleId}
-              onChange={(e) => setCapFilterPlanningCycleId(e.target.value)}
-              placeholder="filter planningCycleId"
-            />
-            <button style={styles.secondaryButton} type="button" onClick={loadCapacityPlans}>
-              Load Capacity Plans
-            </button>
-            <button style={styles.secondaryButton} type="button" onClick={clearWorkspaceMessages}>
-              Clear Messages
-            </button>
+          <div style={styles.workspaceGrid}>
+            <article style={styles.workspaceCard}>
+              <h3 style={styles.cardTitle}>Create Planning Cycle</h3>
+              <form style={styles.formStack} onSubmit={createPlanningCycle}>
+                <input
+                  style={styles.input}
+                  type="text"
+                  value={newCycleName}
+                  onChange={(event) => setNewCycleName(event.target.value)}
+                  placeholder="Cycle name"
+                  required
+                />
+                <div style={styles.formGrid}>
+                  <input
+                    style={styles.input}
+                    type="date"
+                    value={newCycleStartDate}
+                    onChange={(event) => setNewCycleStartDate(event.target.value)}
+                    required
+                  />
+                  <input
+                    style={styles.input}
+                    type="date"
+                    value={newCycleEndDate}
+                    onChange={(event) => setNewCycleEndDate(event.target.value)}
+                    required
+                  />
+                </div>
+                <button style={styles.ctaButton} type="submit" disabled={workspaceLoading}>
+                  Create Cycle
+                </button>
+              </form>
+            </article>
+
+            <article style={styles.workspaceCard}>
+              <h3 style={styles.cardTitle}>Create Capacity Plan</h3>
+              <form style={styles.formStack} onSubmit={createCapacityPlan}>
+                <input
+                  style={styles.input}
+                  type="number"
+                  value={newCapacityHours}
+                  onChange={(event) => setNewCapacityHours(event.target.value)}
+                  placeholder="Planned hours"
+                  min={0}
+                  step={1}
+                  required
+                />
+                <button style={styles.ctaButton} type="submit" disabled={workspaceLoading}>
+                  Save Capacity
+                </button>
+              </form>
+              <button
+                style={{ ...styles.secondaryButton, marginTop: 8 }}
+                type="button"
+                onClick={loadCapacityPlans}
+                disabled={workspaceLoading}
+              >
+                List Capacity Plans
+              </button>
+            </article>
           </div>
-          <small style={styles.hint}>{capacityPlans.total} records</small>
-          <pre style={styles.pre}>{JSON.stringify(capacityPlans.items, null, 2)}</pre>
-        </div>
-      </section>
+
+          <div style={styles.tableWrap}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.tableHeader}>Team</th>
+                  <th style={styles.tableHeader}>Cycle</th>
+                  <th style={styles.tableHeader}>Hours</th>
+                  {showTechnicalDetails && <th style={styles.tableHeader}>Plan ID</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {capacityPlans.items.length === 0 ? (
+                  <tr>
+                    <td style={styles.tableCell} colSpan={showTechnicalDetails ? 4 : 3}>
+                      No capacity plans loaded yet.
+                    </td>
+                  </tr>
+                ) : (
+                  capacityPlans.items.map((plan) => (
+                    <tr key={plan.id}>
+                      <td style={styles.tableCell}>
+                        {teams.items.find((team) => team.id === plan.teamId)?.name ?? 'Unknown team'}
+                      </td>
+                      <td style={styles.tableCell}>
+                        {cycles.items.find((cycle) => cycle.id === plan.planningCycleId)?.name ??
+                          'Unknown cycle'}
+                      </td>
+                      <td style={styles.tableCell}>{plan.plannedHours}</td>
+                      {showTechnicalDetails && <td style={styles.tableCell}>{plan.id}</td>}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {showTechnicalDetails && (
+            <small style={styles.hint}>
+              Selected IDs: org={selectedOrganization?.id ?? 'n/a'} team={selectedTeam?.id ?? 'n/a'} cycle=
+              {selectedCycle?.id ?? 'n/a'}
+            </small>
+          )}
+        </section>
+      )}
     </main>
   );
 }
@@ -607,79 +719,109 @@ export default function HomePage() {
 const styles: Record<string, CSSProperties> = {
   page: {
     minHeight: '100vh',
-    background:
-      'radial-gradient(circle at 20% 10%, #f9efe6 0%, #fff8f3 35%, #f1f8fa 100%)',
-    padding: '28px 18px 52px',
+    background: 'linear-gradient(160deg, #f4efe7 0%, #f6f9fc 55%, #ecf7f2 100%)',
+    padding: '24px 16px 42px',
     fontFamily: '"Space Grotesk", "Segoe UI", sans-serif',
-    color: '#16202a',
+    color: '#1a2b35',
   },
   hero: {
-    maxWidth: 1100,
-    margin: '0 auto 18px',
-  },
-  kicker: {
-    margin: 0,
-    fontSize: 12,
-    letterSpacing: 1.8,
-    textTransform: 'uppercase',
-    color: '#3e6770',
-    fontWeight: 700,
+    maxWidth: 1120,
+    margin: '0 auto 12px',
   },
   title: {
-    margin: '8px 0 8px',
-    fontSize: 'clamp(28px, 5vw, 46px)',
+    margin: 0,
+    fontSize: 'clamp(28px, 5vw, 42px)',
     lineHeight: 1.06,
   },
   subtitle: {
-    margin: 0,
-    maxWidth: 760,
+    margin: '8px 0 0',
+    color: '#3d5966',
     fontSize: 15,
-    color: '#3e5462',
   },
   panel: {
-    maxWidth: 1100,
-    margin: '0 auto 16px',
-    borderRadius: 16,
-    border: '1px solid #d7e4e8',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    padding: 16,
-    boxShadow: '0 10px 28px rgba(20, 44, 65, 0.08)',
+    maxWidth: 1120,
+    margin: '0 auto 14px',
+    borderRadius: 14,
+    border: '1px solid #d5e2e8',
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    padding: 14,
+    boxShadow: '0 12px 28px rgba(20, 44, 65, 0.08)',
+  },
+  toolbar: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  tabs: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  tab: {
+    borderRadius: 999,
+    border: '1px solid #b7ccd4',
+    padding: '8px 12px',
+    background: '#fff',
+    color: '#1d3b47',
+    cursor: 'pointer',
+    fontWeight: 600,
+  },
+  tabActive: {
+    borderRadius: 999,
+    border: '1px solid #1d6c55',
+    padding: '8px 12px',
+    background: '#1d6c55',
+    color: '#fff',
+    cursor: 'pointer',
+    fontWeight: 700,
+  },
+  tokenRow: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(220px, 1fr) auto auto',
+    gap: 8,
   },
   sectionTitle: {
-    margin: '2px 0 12px',
-    fontSize: 18,
+    margin: '2px 0 10px',
+    fontSize: 20,
   },
   filterGrid: {
+    marginTop: 12,
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
     gap: 10,
-    alignItems: 'end',
   },
   field: {
     display: 'flex',
     flexDirection: 'column',
     gap: 6,
   },
-  fieldWide: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-    gridColumn: 'span 2',
-  },
   label: {
     fontSize: 12,
     fontWeight: 700,
-    color: '#28424d',
+    color: '#2a4652',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
   input: {
     borderRadius: 10,
-    border: '1px solid #b5cad1',
-    padding: '10px 12px',
+    border: '1px solid #b7cad1',
+    padding: '9px 11px',
     fontSize: 14,
     color: '#11232b',
-    backgroundColor: '#ffffff',
+    backgroundColor: '#fff',
+  },
+  checkbox: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 13,
+    color: '#28444f',
+  },
+  formGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+    gap: 8,
+    alignItems: 'end',
   },
   ctaButton: {
     borderRadius: 10,
@@ -706,70 +848,49 @@ const styles: Record<string, CSSProperties> = {
   hint: {
     margin: 0,
     fontSize: 12,
-    color: '#48606b',
+    color: '#49616d',
   },
-  resultPanel: {
-    marginTop: 12,
+  errorText: {
+    margin: '8px 0',
+    color: '#8d1a14',
+    fontSize: 13,
+    fontWeight: 600,
   },
-  infoCard: {
-    borderRadius: 14,
-    background: '#fff',
-    border: '1px solid #d8e6ea',
-    padding: 16,
-    color: '#23343e',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 6,
-  },
-  errorCard: {
-    borderColor: '#f1b3af',
-    background: '#fff5f4',
-    color: '#7a1f19',
-  },
-  metaRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: 12,
-    alignItems: 'center',
-    marginBottom: 12,
-    color: '#35515c',
+  successText: {
+    margin: '8px 0',
+    color: '#216b44',
+    fontSize: 13,
+    fontWeight: 600,
   },
   tileGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
     gap: 10,
+    marginTop: 8,
   },
   tileCard: {
-    borderRadius: 14,
+    borderRadius: 12,
     padding: 12,
     background: 'linear-gradient(180deg, #ffffff 0%, #f5fafb 100%)',
     border: '1px solid #d5e5ea',
-    boxShadow: '0 8px 20px rgba(24, 61, 84, 0.08)',
+    boxShadow: '0 8px 18px rgba(24, 61, 84, 0.08)',
   },
   tileHeader: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 6,
   },
   statusDot: {
     width: 10,
     height: 10,
     borderRadius: 999,
   },
-  metricId: {
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: '#526f7a',
-    fontWeight: 700,
-  },
   tileLabel: {
     margin: 0,
     fontSize: 14,
   },
   tileValue: {
-    margin: '7px 0 5px',
+    margin: '8px 0 5px',
     fontSize: 28,
     fontWeight: 800,
     color: '#182a31',
@@ -779,49 +900,63 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 12,
     color: '#415b67',
   },
-  workspaceBlock: {
-    border: '1px solid #dde8ec',
+  techText: {
+    margin: '7px 0 0',
+    fontSize: 12,
+    color: '#4a6370',
+  },
+  headerRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  workspaceGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+    gap: 10,
+    marginTop: 8,
+  },
+  workspaceCard: {
+    border: '1px solid #d8e7ec',
     borderRadius: 12,
     padding: 12,
-    marginTop: 12,
-    background: '#fdfefe',
+    backgroundColor: '#fcfefe',
   },
-  blockTitle: {
+  cardTitle: {
     margin: '0 0 8px',
     fontSize: 15,
   },
-  formRow: {
-    display: 'grid',
-    gridTemplateColumns: '2fr 2fr 1fr',
+  formStack: {
+    display: 'flex',
+    flexDirection: 'column',
     gap: 8,
-    marginBottom: 8,
   },
-  formGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-    gap: 8,
-    marginBottom: 8,
+  tableWrap: {
+    marginTop: 12,
+    overflowX: 'auto',
+    border: '1px solid #d9e6eb',
+    borderRadius: 12,
   },
-  pre: {
-    margin: '8px 0 0',
-    padding: 10,
-    maxHeight: 220,
-    overflow: 'auto',
-    borderRadius: 8,
-    backgroundColor: '#0f1720',
-    color: '#d9ecff',
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    minWidth: 500,
+  },
+  tableHeader: {
+    textAlign: 'left',
+    padding: '10px 12px',
+    background: '#f1f6f8',
+    borderBottom: '1px solid #d9e6eb',
     fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
-  errorText: {
-    margin: '6px 0',
-    color: '#8d1a14',
+  tableCell: {
+    padding: '10px 12px',
+    borderBottom: '1px solid #e5eef2',
     fontSize: 13,
-    fontWeight: 600,
-  },
-  successText: {
-    margin: '6px 0',
-    color: '#216b44',
-    fontSize: 13,
-    fontWeight: 600,
+    color: '#1d3641',
   },
 };
