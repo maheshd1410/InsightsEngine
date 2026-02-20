@@ -4,7 +4,7 @@ import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useState } f
 
 type TrendDirection = 'up' | 'down' | 'flat';
 type TileStatus = 'green' | 'amber' | 'red';
-type WorkspaceTab = 'dashboard' | 'planning';
+type WorkspaceTab = 'dashboard' | 'planning' | 'management';
 
 type SummaryTile = {
   metricId: string;
@@ -112,6 +112,17 @@ export default function HomePage() {
   const [newCycleStartDate, setNewCycleStartDate] = useState('');
   const [newCycleEndDate, setNewCycleEndDate] = useState('');
   const [newCapacityHours, setNewCapacityHours] = useState('');
+  const [newOrgName, setNewOrgName] = useState('');
+  const [newOrgCode, setNewOrgCode] = useState('');
+  const [editOrgId, setEditOrgId] = useState('');
+  const [editOrgName, setEditOrgName] = useState('');
+  const [editOrgCode, setEditOrgCode] = useState('');
+  const [newTeamOrganizationId, setNewTeamOrganizationId] = useState('');
+  const [newTeamName, setNewTeamName] = useState('');
+  const [adminCycleTeamId, setAdminCycleTeamId] = useState('');
+  const [adminCycleName, setAdminCycleName] = useState('');
+  const [adminCycleStartDate, setAdminCycleStartDate] = useState('');
+  const [adminCycleEndDate, setAdminCycleEndDate] = useState('');
 
   const [portfolioData, setPortfolioData] = useState<PortfolioDashboardResponse | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
@@ -125,6 +136,9 @@ export default function HomePage() {
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
   const [lastLookupAt, setLastLookupAt] = useState<string | null>(null);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState<string | null>(null);
+  const [adminMessage, setAdminMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -137,31 +151,53 @@ export default function HomePage() {
     }
   }, []);
 
-  const organizationOptions = organizations.items;
+  const activeOrganizations = useMemo(
+    () => organizations.items.filter((organization) => organization.isActive),
+    [organizations.items],
+  );
+
+  const activeOrganizationIds = useMemo(
+    () => new Set(activeOrganizations.map((organization) => organization.id)),
+    [activeOrganizations],
+  );
+
+  const visibleTeams = useMemo(
+    () => teams.items.filter((team) => activeOrganizationIds.has(team.organizationId)),
+    [teams.items, activeOrganizationIds],
+  );
+
+  const visibleTeamIds = useMemo(() => new Set(visibleTeams.map((team) => team.id)), [visibleTeams]);
+
+  const visibleCycles = useMemo(
+    () => cycles.items.filter((cycle) => visibleTeamIds.has(cycle.teamId)),
+    [cycles.items, visibleTeamIds],
+  );
+
+  const organizationOptions = activeOrganizations;
 
   const teamOptions = useMemo(() => {
-    if (!selectedOrganizationId) return teams.items;
-    return teams.items.filter((team) => team.organizationId === selectedOrganizationId);
-  }, [selectedOrganizationId, teams.items]);
+    if (!selectedOrganizationId) return visibleTeams;
+    return visibleTeams.filter((team) => team.organizationId === selectedOrganizationId);
+  }, [selectedOrganizationId, visibleTeams]);
 
   const cycleOptions = useMemo(() => {
-    if (!selectedTeamId) return cycles.items;
-    return cycles.items.filter((cycle) => cycle.teamId === selectedTeamId);
-  }, [selectedTeamId, cycles.items]);
+    if (!selectedTeamId) return visibleCycles;
+    return visibleCycles.filter((cycle) => cycle.teamId === selectedTeamId);
+  }, [selectedTeamId, visibleCycles]);
 
   const selectedOrganization = useMemo(
-    () => organizations.items.find((org) => org.id === selectedOrganizationId) ?? null,
-    [organizations.items, selectedOrganizationId],
+    () => activeOrganizations.find((org) => org.id === selectedOrganizationId) ?? null,
+    [activeOrganizations, selectedOrganizationId],
   );
 
   const selectedTeam = useMemo(
-    () => teams.items.find((team) => team.id === selectedTeamId) ?? null,
-    [teams.items, selectedTeamId],
+    () => visibleTeams.find((team) => team.id === selectedTeamId) ?? null,
+    [visibleTeams, selectedTeamId],
   );
 
   const selectedCycle = useMemo(
-    () => cycles.items.find((cycle) => cycle.id === selectedCycleId) ?? null,
-    [cycles.items, selectedCycleId],
+    () => visibleCycles.find((cycle) => cycle.id === selectedCycleId) ?? null,
+    [visibleCycles, selectedCycleId],
   );
 
   const tileCount = portfolioData?.summaryTiles.length ?? 0;
@@ -244,6 +280,20 @@ export default function HomePage() {
     [],
   );
 
+  const runAdminAction = useCallback(async (action: () => Promise<void>, successMessage: string) => {
+    setAdminError(null);
+    setAdminMessage(null);
+    setAdminLoading(true);
+    try {
+      await action();
+      setAdminMessage(successMessage);
+    } catch (error) {
+      setAdminError(error instanceof Error ? error.message : 'Unexpected admin error.');
+    } finally {
+      setAdminLoading(false);
+    }
+  }, []);
+
   const validateApiConnection = async () => {
     await runWorkspaceAction(async () => {
       await apiRequest<ListResponse<Organization>>('/organizations?page=1&pageSize=1');
@@ -263,23 +313,79 @@ export default function HomePage() {
       setLookupError(null);
       setLookupMessage(null);
       try {
-        const [orgPayload, teamPayload, cyclePayload] = await Promise.all([
-          apiRequest<ListResponse<Organization>>('/organizations?page=1&pageSize=100'),
-          apiRequest<ListResponse<Team>>('/teams?page=1&pageSize=100'),
-          apiRequest<ListResponse<PlanningCycle>>('/planning-cycles?page=1&pageSize=100'),
-        ]);
-        setOrganizations(orgPayload);
-        setTeams(teamPayload);
-        setCycles(cyclePayload);
+        let orgItems: Organization[] = [];
+        let teamItems: Team[] = [];
+        let cycleItems: PlanningCycle[] = [];
+        let orgCount = 0;
+        let teamCount = 0;
+        let cycleCount = 0;
+        const failures: string[] = [];
+
+        try {
+          const orgPayload = await apiRequest<ListResponse<Organization>>(
+            '/organizations?page=1&pageSize=100',
+          );
+          setOrganizations(orgPayload);
+          orgItems = orgPayload.items;
+          orgCount = orgPayload.items.filter((organization) => organization.isActive).length;
+        } catch (error) {
+          failures.push(
+            `organizations: ${error instanceof Error ? error.message : 'request failed'}`,
+          );
+        }
+
+        try {
+          const teamPayload = await apiRequest<ListResponse<Team>>('/teams?page=1&pageSize=100');
+          setTeams(teamPayload);
+          teamItems = teamPayload.items;
+          const activeOrganizationIdsFromPayload = new Set(
+            orgItems
+              .filter((organization) => organization.isActive)
+              .map((organization) => organization.id),
+          );
+          teamCount = teamPayload.items.filter((team) =>
+            activeOrganizationIdsFromPayload.has(team.organizationId),
+          ).length;
+        } catch (error) {
+          failures.push(`teams: ${error instanceof Error ? error.message : 'request failed'}`);
+        }
+
+        try {
+          const cyclePayload = await apiRequest<ListResponse<PlanningCycle>>(
+            '/planning-cycles?page=1&pageSize=100',
+          );
+          setCycles(cyclePayload);
+          cycleItems = cyclePayload.items;
+          const activeOrganizationIdsFromPayload = new Set(
+            orgItems
+              .filter((organization) => organization.isActive)
+              .map((organization) => organization.id),
+          );
+          const activeTeamIdsFromPayload = new Set(
+            teamItems
+              .filter((team) => activeOrganizationIdsFromPayload.has(team.organizationId))
+              .map((team) => team.id),
+          );
+          cycleCount = cycleItems.filter((cycle) => activeTeamIdsFromPayload.has(cycle.teamId)).length;
+        } catch (error) {
+          failures.push(
+            `planning-cycles: ${error instanceof Error ? error.message : 'request failed'}`,
+          );
+        }
+
         setCapacityPlans(defaultList());
-        const totalLoaded =
-          orgPayload.items.length + teamPayload.items.length + cyclePayload.items.length;
+
+        const totalLoaded = orgCount + teamCount + cycleCount;
         if (totalLoaded === 0) {
           setLookupMessage(
             'Reference data loaded, but no records exist yet. Create Organization, Team, and Planning Cycle first.',
           );
         } else {
-          setLookupMessage(successMessage);
+          setLookupMessage(`${successMessage} (Orgs: ${orgCount}, Teams: ${teamCount}, Cycles: ${cycleCount})`);
+        }
+
+        if (failures.length > 0) {
+          setLookupError(`Partial load: ${failures.join(' | ')}`);
         }
         setLastLookupAt(new Date().toLocaleTimeString());
       } catch (error) {
@@ -299,6 +405,30 @@ export default function HomePage() {
     }
     void bootstrapLookups('Reference data auto-loaded.');
   }, [bearerToken, bootstrapLookups]);
+
+  useEffect(() => {
+    if (selectedOrganizationId && !activeOrganizations.some((org) => org.id === selectedOrganizationId)) {
+      setSelectedOrganizationId('');
+      setSelectedTeamId('');
+      setSelectedCycleId('');
+      return;
+    }
+    if (selectedTeamId && !visibleTeams.some((team) => team.id === selectedTeamId)) {
+      setSelectedTeamId('');
+      setSelectedCycleId('');
+      return;
+    }
+    if (selectedCycleId && !visibleCycles.some((cycle) => cycle.id === selectedCycleId)) {
+      setSelectedCycleId('');
+    }
+  }, [
+    activeOrganizations,
+    selectedCycleId,
+    selectedOrganizationId,
+    selectedTeamId,
+    visibleCycles,
+    visibleTeams,
+  ]);
 
   const loadPortfolioDashboard = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -389,6 +519,95 @@ export default function HomePage() {
     }, 'Capacity plans loaded.');
   };
 
+  const createOrganization = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await runAdminAction(async () => {
+      await apiRequest<Organization>('/organizations', {
+        method: 'POST',
+        body: JSON.stringify({ name: newOrgName.trim(), code: newOrgCode.trim() }),
+      });
+      setNewOrgName('');
+      setNewOrgCode('');
+      await bootstrapLookups('Organization created and lists refreshed.');
+    }, 'Organization created.');
+  };
+
+  const startOrganizationEdit = (organization: Organization) => {
+    setEditOrgId(organization.id);
+    setEditOrgName(organization.name);
+    setEditOrgCode(organization.code);
+  };
+
+  const saveOrganizationEdit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editOrgId) {
+      setAdminError('Select an organization to update.');
+      return;
+    }
+    await runAdminAction(async () => {
+      await apiRequest<Organization>(`/organizations/${editOrgId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: editOrgName.trim(), code: editOrgCode.trim() }),
+      });
+      setEditOrgId('');
+      setEditOrgName('');
+      setEditOrgCode('');
+      await bootstrapLookups('Organization updated and lists refreshed.');
+    }, 'Organization updated.');
+  };
+
+  const deleteOrganization = async (organizationId: string) => {
+    await runAdminAction(async () => {
+      await apiRequest<void>(`/organizations/${organizationId}`, { method: 'DELETE' });
+      if (selectedOrganizationId === organizationId) {
+        setSelectedOrganizationId('');
+      }
+      await bootstrapLookups('Organization deleted and lists refreshed.');
+    }, 'Organization deleted.');
+  };
+
+  const createTeamAdmin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!newTeamOrganizationId) {
+      setAdminError('Select organization before creating a team.');
+      return;
+    }
+    await runAdminAction(async () => {
+      await apiRequest<Team>('/teams', {
+        method: 'POST',
+        body: JSON.stringify({
+          organizationId: newTeamOrganizationId,
+          name: newTeamName.trim(),
+        }),
+      });
+      setNewTeamName('');
+      await bootstrapLookups('Team created and lists refreshed.');
+    }, 'Team created.');
+  };
+
+  const createPlanningCycleAdmin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!adminCycleTeamId) {
+      setAdminError('Select team before creating planning cycle.');
+      return;
+    }
+    await runAdminAction(async () => {
+      await apiRequest<PlanningCycle>('/planning-cycles', {
+        method: 'POST',
+        body: JSON.stringify({
+          teamId: adminCycleTeamId,
+          name: adminCycleName.trim(),
+          startDate: adminCycleStartDate,
+          endDate: adminCycleEndDate,
+        }),
+      });
+      setAdminCycleName('');
+      setAdminCycleStartDate('');
+      setAdminCycleEndDate('');
+      await bootstrapLookups('Planning cycle created and lists refreshed.');
+    }, 'Planning cycle created.');
+  };
+
   return (
     <main style={styles.page}>
       <section style={styles.hero}>
@@ -414,6 +633,13 @@ export default function HomePage() {
               onClick={() => setActiveTab('planning')}
             >
               Planning Workspace
+            </button>
+            <button
+              type="button"
+              style={activeTab === 'management' ? styles.tabActive : styles.tab}
+              onClick={() => setActiveTab('management')}
+            >
+              Management
             </button>
           </div>
 
@@ -517,8 +743,8 @@ export default function HomePage() {
               {lookupLoading ? 'Loading...' : 'Reload Reference Data'}
             </button>
             <small style={styles.hint}>
-              Orgs: {organizations.items.length} | Teams: {teams.items.length} | Cycles:{' '}
-              {cycles.items.length}
+              Orgs: {activeOrganizations.length} | Teams: {visibleTeams.length} | Cycles:{' '}
+              {visibleCycles.length}
             </small>
           </div>
         </div>
@@ -589,7 +815,7 @@ export default function HomePage() {
             </div>
           )}
         </section>
-      ) : (
+      ) : activeTab === 'planning' ? (
         <section style={styles.panel}>
           <div style={styles.headerRow}>
             <h2 style={styles.sectionTitle}>Planning Workspace</h2>
@@ -689,10 +915,10 @@ export default function HomePage() {
                   capacityPlans.items.map((plan) => (
                     <tr key={plan.id}>
                       <td style={styles.tableCell}>
-                        {teams.items.find((team) => team.id === plan.teamId)?.name ?? 'Unknown team'}
+                        {visibleTeams.find((team) => team.id === plan.teamId)?.name ?? 'Unknown team'}
                       </td>
                       <td style={styles.tableCell}>
-                        {cycles.items.find((cycle) => cycle.id === plan.planningCycleId)?.name ??
+                        {visibleCycles.find((cycle) => cycle.id === plan.planningCycleId)?.name ??
                           'Unknown cycle'}
                       </td>
                       <td style={styles.tableCell}>{plan.plannedHours}</td>
@@ -710,6 +936,229 @@ export default function HomePage() {
               {selectedCycle?.id ?? 'n/a'}
             </small>
           )}
+        </section>
+      ) : (
+        <section style={styles.panel}>
+          <div style={styles.headerRow}>
+            <h2 style={styles.sectionTitle}>Organization, Team, and Cycle Management</h2>
+            <button
+              style={styles.secondaryButton}
+              type="button"
+              onClick={() => void bootstrapLookups()}
+              disabled={lookupLoading || adminLoading}
+            >
+              Refresh Lists
+            </button>
+          </div>
+
+          {adminError && <p style={styles.errorText}>{adminError}</p>}
+          {adminMessage && <p style={styles.successText}>{adminMessage}</p>}
+
+          <div style={styles.workspaceGrid}>
+            <article style={styles.workspaceCard}>
+              <h3 style={styles.cardTitle}>Create Organization</h3>
+              <form style={styles.formStack} onSubmit={createOrganization}>
+                <input
+                  style={styles.input}
+                  type="text"
+                  placeholder="Organization name"
+                  value={newOrgName}
+                  onChange={(event) => setNewOrgName(event.target.value)}
+                  required
+                />
+                <input
+                  style={styles.input}
+                  type="text"
+                  placeholder="Organization code"
+                  value={newOrgCode}
+                  onChange={(event) => setNewOrgCode(event.target.value)}
+                  required
+                />
+                <button style={styles.ctaButton} type="submit" disabled={adminLoading}>
+                  Create Organization
+                </button>
+              </form>
+            </article>
+
+            <article style={styles.workspaceCard}>
+              <h3 style={styles.cardTitle}>Create Team</h3>
+              <form style={styles.formStack} onSubmit={createTeamAdmin}>
+                <select
+                  style={styles.input}
+                  value={newTeamOrganizationId}
+                  onChange={(event) => setNewTeamOrganizationId(event.target.value)}
+                  required
+                >
+                  <option value="">Select organization</option>
+                  {activeOrganizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  style={styles.input}
+                  type="text"
+                  placeholder="Team name"
+                  value={newTeamName}
+                  onChange={(event) => setNewTeamName(event.target.value)}
+                  required
+                />
+                <button style={styles.ctaButton} type="submit" disabled={adminLoading}>
+                  Create Team
+                </button>
+              </form>
+            </article>
+
+            <article style={styles.workspaceCard}>
+              <h3 style={styles.cardTitle}>Create Planning Cycle</h3>
+              <form style={styles.formStack} onSubmit={createPlanningCycleAdmin}>
+                <select
+                  style={styles.input}
+                  value={adminCycleTeamId}
+                  onChange={(event) => setAdminCycleTeamId(event.target.value)}
+                  required
+                >
+                  <option value="">Select team</option>
+                  {visibleTeams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  style={styles.input}
+                  type="text"
+                  placeholder="Cycle name"
+                  value={adminCycleName}
+                  onChange={(event) => setAdminCycleName(event.target.value)}
+                  required
+                />
+                <div style={styles.formGrid}>
+                  <input
+                    style={styles.input}
+                    type="date"
+                    value={adminCycleStartDate}
+                    onChange={(event) => setAdminCycleStartDate(event.target.value)}
+                    required
+                  />
+                  <input
+                    style={styles.input}
+                    type="date"
+                    value={adminCycleEndDate}
+                    onChange={(event) => setAdminCycleEndDate(event.target.value)}
+                    required
+                  />
+                </div>
+                <button style={styles.ctaButton} type="submit" disabled={adminLoading}>
+                  Create Planning Cycle
+                </button>
+              </form>
+            </article>
+          </div>
+
+          <div style={styles.tableWrap}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.tableHeader}>Organization</th>
+                  <th style={styles.tableHeader}>Code</th>
+                  <th style={styles.tableHeader}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeOrganizations.length === 0 ? (
+                  <tr>
+                    <td style={styles.tableCell} colSpan={3}>
+                      No organizations available.
+                    </td>
+                  </tr>
+                ) : (
+                  activeOrganizations.map((organization) => (
+                    <tr key={organization.id}>
+                      <td style={styles.tableCell}>{organization.name}</td>
+                      <td style={styles.tableCell}>{organization.code}</td>
+                      <td style={styles.tableCell}>
+                        <div style={styles.actionRow}>
+                          <button
+                            type="button"
+                            style={styles.secondaryButton}
+                            onClick={() => startOrganizationEdit(organization)}
+                            disabled={adminLoading}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            style={styles.secondaryButton}
+                            onClick={() => void deleteOrganization(organization.id)}
+                            disabled={adminLoading}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                        {showTechnicalDetails && (
+                          <small style={styles.hint}>ID: {organization.id}</small>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {editOrgId && (
+            <article style={styles.workspaceCard}>
+              <h3 style={styles.cardTitle}>Edit Organization</h3>
+              <form style={styles.formGrid} onSubmit={saveOrganizationEdit}>
+                <input
+                  style={styles.input}
+                  type="text"
+                  value={editOrgName}
+                  onChange={(event) => setEditOrgName(event.target.value)}
+                  required
+                />
+                <input
+                  style={styles.input}
+                  type="text"
+                  value={editOrgCode}
+                  onChange={(event) => setEditOrgCode(event.target.value)}
+                  required
+                />
+                <button style={styles.ctaButton} type="submit" disabled={adminLoading}>
+                  Save Organization
+                </button>
+              </form>
+            </article>
+          )}
+
+          <div style={styles.workspaceGrid}>
+            <article style={styles.workspaceCard}>
+              <h3 style={styles.cardTitle}>Teams</h3>
+              <ul style={styles.list}>
+                {visibleTeams.length === 0 && <li>No teams available.</li>}
+                {visibleTeams.map((team) => (
+                  <li key={team.id}>
+                    {team.name} ({activeOrganizations.find((org) => org.id === team.organizationId)?.name ?? 'Unknown org'})
+                    {showTechnicalDetails && ` | ${team.id}`}
+                  </li>
+                ))}
+              </ul>
+            </article>
+            <article style={styles.workspaceCard}>
+              <h3 style={styles.cardTitle}>Planning Cycles</h3>
+              <ul style={styles.list}>
+                {visibleCycles.length === 0 && <li>No planning cycles available.</li>}
+                {visibleCycles.map((cycle) => (
+                  <li key={cycle.id}>
+                    {cycle.name} ({cycle.startDate} to {cycle.endDate})
+                    {showTechnicalDetails && ` | ${cycle.id}`}
+                  </li>
+                ))}
+              </ul>
+            </article>
+          </div>
         </section>
       )}
     </main>
@@ -956,6 +1405,21 @@ const styles: Record<string, CSSProperties> = {
   tableCell: {
     padding: '10px 12px',
     borderBottom: '1px solid #e5eef2',
+    fontSize: 13,
+    color: '#1d3641',
+  },
+  actionRow: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginBottom: 6,
+  },
+  list: {
+    margin: 0,
+    paddingLeft: 18,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
     fontSize: 13,
     color: '#1d3641',
   },
