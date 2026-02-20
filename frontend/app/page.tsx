@@ -47,6 +47,8 @@ type CapacityPlan = {
   plannedHours: number;
 };
 
+type CapacitySortField = 'team' | 'cycle' | 'hours' | 'updatedAt';
+
 type ListResponse<T> = {
   items: T[];
   page: number;
@@ -112,6 +114,13 @@ export default function HomePage() {
   const [newCycleStartDate, setNewCycleStartDate] = useState('');
   const [newCycleEndDate, setNewCycleEndDate] = useState('');
   const [newCapacityHours, setNewCapacityHours] = useState('');
+  const [capacitySearch, setCapacitySearch] = useState('');
+  const [capacityMinHours, setCapacityMinHours] = useState('');
+  const [capacityMaxHours, setCapacityMaxHours] = useState('');
+  const [capacityDateFrom, setCapacityDateFrom] = useState('');
+  const [capacityDateTo, setCapacityDateTo] = useState('');
+  const [capacitySortField, setCapacitySortField] = useState<CapacitySortField>('updatedAt');
+  const [capacitySortDirection, setCapacitySortDirection] = useState<'asc' | 'desc'>('desc');
   const [newOrgName, setNewOrgName] = useState('');
   const [newOrgCode, setNewOrgCode] = useState('');
   const [editOrgId, setEditOrgId] = useState('');
@@ -201,6 +210,77 @@ export default function HomePage() {
   );
 
   const tileCount = portfolioData?.summaryTiles.length ?? 0;
+
+  const capacityRows = useMemo(
+    () =>
+      capacityPlans.items.map((plan) => {
+        const team = visibleTeams.find((item) => item.id === plan.teamId);
+        const cycle = visibleCycles.find((item) => item.id === plan.planningCycleId);
+        return {
+          ...plan,
+          teamName: team?.name ?? 'Unknown team',
+          cycleName: cycle?.name ?? 'Unknown cycle',
+          cycleStartDate: cycle?.startDate ?? '',
+          cycleEndDate: cycle?.endDate ?? '',
+        };
+      }),
+    [capacityPlans.items, visibleCycles, visibleTeams],
+  );
+
+  const filteredCapacityRows = useMemo(() => {
+    let rows = [...capacityRows];
+    const searchTerm = capacitySearch.trim().toLowerCase();
+    const minHours = capacityMinHours ? Number(capacityMinHours) : null;
+    const maxHours = capacityMaxHours ? Number(capacityMaxHours) : null;
+
+    if (searchTerm) {
+      rows = rows.filter(
+        (row) =>
+          row.teamName.toLowerCase().includes(searchTerm) ||
+          row.cycleName.toLowerCase().includes(searchTerm),
+      );
+    }
+
+    if (Number.isFinite(minHours)) {
+      rows = rows.filter((row) => row.plannedHours >= (minHours as number));
+    }
+
+    if (Number.isFinite(maxHours)) {
+      rows = rows.filter((row) => row.plannedHours <= (maxHours as number));
+    }
+
+    if (capacityDateFrom) {
+      rows = rows.filter((row) => !row.cycleStartDate || row.cycleStartDate >= capacityDateFrom);
+    }
+    if (capacityDateTo) {
+      rows = rows.filter((row) => !row.cycleEndDate || row.cycleEndDate <= capacityDateTo);
+    }
+
+    rows.sort((left, right) => {
+      const direction = capacitySortDirection === 'asc' ? 1 : -1;
+      if (capacitySortField === 'hours') {
+        return (left.plannedHours - right.plannedHours) * direction;
+      }
+      if (capacitySortField === 'team') {
+        return left.teamName.localeCompare(right.teamName) * direction;
+      }
+      if (capacitySortField === 'cycle') {
+        return left.cycleName.localeCompare(right.cycleName) * direction;
+      }
+      return left.updatedAt.localeCompare(right.updatedAt) * direction;
+    });
+
+    return rows;
+  }, [
+    capacityDateFrom,
+    capacityDateTo,
+    capacityMaxHours,
+    capacityMinHours,
+    capacityRows,
+    capacitySearch,
+    capacitySortDirection,
+    capacitySortField,
+  ]);
 
   const persistToken = () => {
     if (typeof window === 'undefined') {
@@ -504,19 +584,29 @@ export default function HomePage() {
   };
 
   const loadCapacityPlans = async () => {
-    if (!selectedTeamId || !selectedCycleId) {
-      setWorkspaceError('Select a team and cycle to list capacity plans.');
-      return;
-    }
     await runWorkspaceAction(async () => {
       const query = new URLSearchParams({ page: '1', pageSize: '100' });
-      query.set('teamId', selectedTeamId);
-      query.set('planningCycleId', selectedCycleId);
+      if (selectedTeamId) {
+        query.set('teamId', selectedTeamId);
+      }
+      if (selectedCycleId) {
+        query.set('planningCycleId', selectedCycleId);
+      }
       const plansPayload = await apiRequest<ListResponse<CapacityPlan>>(
         `/capacity-plans?${query.toString()}`,
       );
       setCapacityPlans(plansPayload);
     }, 'Capacity plans loaded.');
+  };
+
+  const clearCapacityFilters = () => {
+    setCapacitySearch('');
+    setCapacityMinHours('');
+    setCapacityMaxHours('');
+    setCapacityDateFrom('');
+    setCapacityDateTo('');
+    setCapacitySortField('updatedAt');
+    setCapacitySortDirection('desc');
   };
 
   const createOrganization = async (event: FormEvent<HTMLFormElement>) => {
@@ -892,7 +982,79 @@ export default function HomePage() {
                 List Capacity Plans
               </button>
             </article>
+
+            <article style={styles.workspaceCard}>
+              <h3 style={styles.cardTitle}>Capacity Filters</h3>
+              <div style={styles.formStack}>
+                <input
+                  style={styles.input}
+                  type="text"
+                  placeholder="Search team or cycle"
+                  value={capacitySearch}
+                  onChange={(event) => setCapacitySearch(event.target.value)}
+                />
+                <div style={styles.formGrid}>
+                  <input
+                    style={styles.input}
+                    type="number"
+                    placeholder="Min hours"
+                    min={0}
+                    value={capacityMinHours}
+                    onChange={(event) => setCapacityMinHours(event.target.value)}
+                  />
+                  <input
+                    style={styles.input}
+                    type="number"
+                    placeholder="Max hours"
+                    min={0}
+                    value={capacityMaxHours}
+                    onChange={(event) => setCapacityMaxHours(event.target.value)}
+                  />
+                </div>
+                <div style={styles.formGrid}>
+                  <input
+                    style={styles.input}
+                    type="date"
+                    value={capacityDateFrom}
+                    onChange={(event) => setCapacityDateFrom(event.target.value)}
+                  />
+                  <input
+                    style={styles.input}
+                    type="date"
+                    value={capacityDateTo}
+                    onChange={(event) => setCapacityDateTo(event.target.value)}
+                  />
+                </div>
+                <div style={styles.formGrid}>
+                  <select
+                    style={styles.input}
+                    value={capacitySortField}
+                    onChange={(event) => setCapacitySortField(event.target.value as CapacitySortField)}
+                  >
+                    <option value="updatedAt">Sort by updated</option>
+                    <option value="hours">Sort by hours</option>
+                    <option value="team">Sort by team</option>
+                    <option value="cycle">Sort by cycle</option>
+                  </select>
+                  <select
+                    style={styles.input}
+                    value={capacitySortDirection}
+                    onChange={(event) => setCapacitySortDirection(event.target.value as 'asc' | 'desc')}
+                  >
+                    <option value="desc">Descending</option>
+                    <option value="asc">Ascending</option>
+                  </select>
+                </div>
+                <button style={styles.secondaryButton} type="button" onClick={clearCapacityFilters}>
+                  Clear Filters
+                </button>
+              </div>
+            </article>
           </div>
+
+          <small style={styles.hint}>
+            Capacity plans: loaded {capacityRows.length}, visible {filteredCapacityRows.length}
+          </small>
 
           <div style={styles.tableWrap}>
             <table style={styles.table}>
@@ -900,28 +1062,31 @@ export default function HomePage() {
                 <tr>
                   <th style={styles.tableHeader}>Team</th>
                   <th style={styles.tableHeader}>Cycle</th>
+                  <th style={styles.tableHeader}>Cycle Window</th>
                   <th style={styles.tableHeader}>Hours</th>
+                  <th style={styles.tableHeader}>Updated</th>
                   {showTechnicalDetails && <th style={styles.tableHeader}>Plan ID</th>}
                 </tr>
               </thead>
               <tbody>
-                {capacityPlans.items.length === 0 ? (
+                {filteredCapacityRows.length === 0 ? (
                   <tr>
-                    <td style={styles.tableCell} colSpan={showTechnicalDetails ? 4 : 3}>
-                      No capacity plans loaded yet.
+                    <td style={styles.tableCell} colSpan={showTechnicalDetails ? 6 : 5}>
+                      No capacity plans match current filters.
                     </td>
                   </tr>
                 ) : (
-                  capacityPlans.items.map((plan) => (
+                  filteredCapacityRows.map((plan) => (
                     <tr key={plan.id}>
+                      <td style={styles.tableCell}>{plan.teamName}</td>
+                      <td style={styles.tableCell}>{plan.cycleName}</td>
                       <td style={styles.tableCell}>
-                        {visibleTeams.find((team) => team.id === plan.teamId)?.name ?? 'Unknown team'}
-                      </td>
-                      <td style={styles.tableCell}>
-                        {visibleCycles.find((cycle) => cycle.id === plan.planningCycleId)?.name ??
-                          'Unknown cycle'}
+                        {plan.cycleStartDate && plan.cycleEndDate
+                          ? `${plan.cycleStartDate} to ${plan.cycleEndDate}`
+                          : 'N/A'}
                       </td>
                       <td style={styles.tableCell}>{plan.plannedHours}</td>
+                      <td style={styles.tableCell}>{new Date(plan.updatedAt).toLocaleDateString()}</td>
                       {showTechnicalDetails && <td style={styles.tableCell}>{plan.id}</td>}
                     </tr>
                   ))
