@@ -229,5 +229,27 @@ describe('Implemented API contracts', () => {
         total: expect.any(Number),
       }),
     );
+
+    const usersList = await request(app.getHttpServer())
+      .get('/api/v1/users?page=1&pageSize=10')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(usersList.status).toBe(200);
+    expect(usersList.body).toEqual(
+      expect.objectContaining({
+        items: expect.any(Array),
+        page: expect.any(Number),
+        pageSize: expect.any(Number),
+        total: expect.any(Number),
+      }),
+    );
+    expect(usersList.body.items[0]).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        email: expect.any(String),
+        name: expect.any(String),
+        role: expect.stringMatching(/^(admin|engineering_manager|team_lead|executive)$/),
+        isActive: expect.any(Boolean),
+      }),
+    );
   });
 });

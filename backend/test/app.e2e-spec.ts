@@ -432,4 +432,54 @@ describe('App (e2e)', () => {
     const noAuth = await request(app.getHttpServer()).get('/api/v1/action-items');
     expect(noAuth.status).toBe(401);
   });
+
+  it('/api/v1/users CRUD + RBAC', async () => {
+    const adminToken = createToken('admin');
+    const managerToken = createToken('engineering_manager');
+
+    const managerForbidden = await request(app.getHttpServer())
+      .get('/api/v1/users?page=1&pageSize=10')
+      .set('Authorization', `Bearer ${managerToken}`);
+    expect(managerForbidden.status).toBe(403);
+
+    const createResponse = await request(app.getHttpServer())
+      .post('/api/v1/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email: 'new.user@insights.local',
+        name: 'New User',
+        role: 'team_lead',
+        password: 'Temp@123',
+      });
+    expect(createResponse.status).toBe(201);
+    const userId = createResponse.body.id as string;
+
+    const listResponse = await request(app.getHttpServer())
+      .get('/api/v1/users?page=1&pageSize=50')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body.total).toBeGreaterThan(0);
+
+    const updateResponse = await request(app.getHttpServer())
+      .patch(`/api/v1/users/${userId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'Updated User',
+        role: 'engineering_manager',
+      });
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.name).toBe('Updated User');
+    expect(updateResponse.body.role).toBe('engineering_manager');
+
+    const deleteResponse = await request(app.getHttpServer())
+      .delete(`/api/v1/users/${userId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(deleteResponse.status).toBe(204);
+
+    const getDeleted = await request(app.getHttpServer())
+      .get(`/api/v1/users/${userId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(getDeleted.status).toBe(200);
+    expect(getDeleted.body.isActive).toBe(false);
+  });
 });

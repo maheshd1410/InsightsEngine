@@ -1,5 +1,6 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { sign } from 'jsonwebtoken';
+import { UsersService } from '../users/users.service';
 import { AppRole } from './auth.types';
 
 export interface LoginResponse {
@@ -13,58 +14,12 @@ export interface LoginResponse {
   };
 }
 
-type DemoUser = {
-  id: string;
-  email: string;
-  password: string;
-  name: string;
-  role: AppRole;
-};
-
-const DEMO_USERS: DemoUser[] = [
-  {
-    id: 'u-admin',
-    email: 'admin@insights.local',
-    password: 'Admin@123',
-    name: 'Admin User',
-    role: 'admin',
-  },
-  {
-    id: 'u-manager',
-    email: 'manager@insights.local',
-    password: 'Manager@123',
-    name: 'Engineering Manager',
-    role: 'engineering_manager',
-  },
-  {
-    id: 'u-lead',
-    email: 'lead@insights.local',
-    password: 'Lead@123',
-    name: 'Team Lead',
-    role: 'team_lead',
-  },
-  {
-    id: 'u-exec',
-    email: 'executive@insights.local',
-    password: 'Executive@123',
-    name: 'Executive User',
-    role: 'executive',
-  },
-];
-
 @Injectable()
 export class AuthService {
+  constructor(private readonly usersService: UsersService) {}
+
   login(emailRaw: string, passwordRaw: string): LoginResponse {
-    const email = emailRaw.trim().toLowerCase();
-    const password = passwordRaw.trim();
-
-    const user = DEMO_USERS.find(
-      (candidate) => candidate.email.toLowerCase() === email && candidate.password === password,
-    );
-
-    if (!user) {
-      throw new UnauthorizedException('Invalid email or password.');
-    }
+    const user = this.usersService.findForAuth(emailRaw, passwordRaw);
 
     const secret = process.env.JWT_SECRET ?? 'dev-secret';
     const expiresInSeconds = 8 * 60 * 60;
