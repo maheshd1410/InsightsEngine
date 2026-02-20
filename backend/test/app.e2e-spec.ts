@@ -4,6 +4,8 @@ import { sign } from 'jsonwebtoken';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { AppRole } from '../src/auth/auth.types';
+import { HttpErrorFilter } from '../src/common/filters/http-error.filter';
+import { RequestContextMiddleware } from '../src/common/middleware/request-context.middleware';
 
 describe('App (e2e)', () => {
   let app: INestApplication;
@@ -29,6 +31,8 @@ describe('App (e2e)', () => {
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
+    app.use(RequestContextMiddleware);
+    app.useGlobalFilters(new HttpErrorFilter());
     await app.init();
   });
 
@@ -45,6 +49,14 @@ describe('App (e2e)', () => {
   it('/api/v1/organizations (GET) returns 401 without token', async () => {
     const response = await request(app.getHttpServer()).get('/api/v1/organizations');
     expect(response.status).toBe(401);
+    expect(response.body).toEqual(
+      expect.objectContaining({
+        statusCode: 401,
+        code: 'UNAUTHORIZED',
+        message: expect.any(String),
+        correlationId: expect.any(String),
+      }),
+    );
   });
 
   it('/api/v1/organizations CRUD + RBAC', async () => {

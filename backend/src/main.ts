@@ -1,5 +1,6 @@
-﻿import { NestFactory } from '@nestjs/core';
+import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { HttpErrorFilter } from './common/filters/http-error.filter';
 import { RequestContextMiddleware } from './common/middleware/request-context.middleware';
 
 async function bootstrap(): Promise<void> {
@@ -13,6 +14,7 @@ async function bootstrap(): Promise<void> {
 
   app.setGlobalPrefix('api/v1');
   app.use(RequestContextMiddleware);
+  app.useGlobalFilters(new HttpErrorFilter());
 
   await app.listen(3000);
 }

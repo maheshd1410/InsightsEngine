@@ -4,6 +4,8 @@ import { sign } from 'jsonwebtoken';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { AppRole } from '../src/auth/auth.types';
+import { HttpErrorFilter } from '../src/common/filters/http-error.filter';
+import { RequestContextMiddleware } from '../src/common/middleware/request-context.middleware';
 
 describe('Implemented API contracts', () => {
   let app: INestApplication;
@@ -29,6 +31,8 @@ describe('Implemented API contracts', () => {
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
+    app.use(RequestContextMiddleware);
+    app.useGlobalFilters(new HttpErrorFilter());
     await app.init();
   });
 
@@ -56,7 +60,9 @@ describe('Implemented API contracts', () => {
     expect(response.body).toEqual(
       expect.objectContaining({
         statusCode: 401,
+        code: 'UNAUTHORIZED',
         message: expect.any(String),
+        correlationId: expect.any(String),
       }),
     );
   });
