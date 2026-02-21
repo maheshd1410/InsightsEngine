@@ -251,5 +251,48 @@ describe('Implemented API contracts', () => {
         isActive: expect.any(Boolean),
       }),
     );
+
+    const project = await request(app.getHttpServer())
+      .post('/api/v1/projects')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        organizationId: org.body.id,
+        teamId: teams.body.id,
+        name: 'Contract Project',
+        code: 'ctr-prj',
+      });
+    expect(project.status).toBe(201);
+    expect(project.body).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        organizationId: org.body.id,
+        teamId: teams.body.id,
+        name: 'Contract Project',
+        code: 'CTR-PRJ',
+        isActive: true,
+      }),
+    );
+
+    const projectsList = await request(app.getHttpServer())
+      .get(`/api/v1/projects?organizationId=${org.body.id}&teamId=${teams.body.id}&isActive=true`)
+      .set('Authorization', `Bearer ${managerToken}`);
+    expect(projectsList.status).toBe(200);
+    expect(projectsList.body).toEqual(
+      expect.objectContaining({
+        items: expect.any(Array),
+        page: expect.any(Number),
+        pageSize: expect.any(Number),
+        total: expect.any(Number),
+      }),
+    );
+    expect(projectsList.body.items[0]).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        organizationId: expect.any(String),
+        name: expect.any(String),
+        code: expect.any(String),
+        isActive: expect.any(Boolean),
+      }),
+    );
   });
 });

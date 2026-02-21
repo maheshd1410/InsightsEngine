@@ -482,4 +482,89 @@ describe('App (e2e)', () => {
     expect(getDeleted.status).toBe(200);
     expect(getDeleted.body.isActive).toBe(false);
   });
+
+  it('/api/v1/projects CRUD + filters + RBAC', async () => {
+    const adminToken = createToken('admin');
+    const managerToken = createToken('engineering_manager');
+    const leadToken = createToken('team_lead');
+
+    const org = await request(app.getHttpServer())
+      .post('/api/v1/organizations')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Projects Org', code: 'prj' });
+    expect(org.status).toBe(201);
+
+    const team = await request(app.getHttpServer())
+      .post('/api/v1/teams')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ organizationId: org.body.id, name: 'Projects Team' });
+    expect(team.status).toBe(201);
+
+    const leadCreateForbidden = await request(app.getHttpServer())
+      .post('/api/v1/projects')
+      .set('Authorization', `Bearer ${leadToken}`)
+      .send({
+        organizationId: org.body.id,
+        teamId: team.body.id,
+        name: 'DH Admin',
+        code: 'dh-admin',
+      });
+    expect(leadCreateForbidden.status).toBe(403);
+
+    const createResponse = await request(app.getHttpServer())
+      .post('/api/v1/projects')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        organizationId: org.body.id,
+        teamId: team.body.id,
+        name: 'DH Admin',
+        code: 'dh-admin',
+        description: 'Admin portal modernization',
+      });
+    expect(createResponse.status).toBe(201);
+    expect(createResponse.body.code).toBe('DH-ADMIN');
+
+    const projectId = createResponse.body.id as string;
+
+    const managerList = await request(app.getHttpServer())
+      .get(`/api/v1/projects?organizationId=${org.body.id}&teamId=${team.body.id}&isActive=true`)
+      .set('Authorization', `Bearer ${managerToken}`);
+    expect(managerList.status).toBe(200);
+    expect(managerList.body.total).toBe(1);
+    expect(managerList.body.items[0].id).toBe(projectId);
+
+    const managerGet = await request(app.getHttpServer())
+      .get(`/api/v1/projects/${projectId}`)
+      .set('Authorization', `Bearer ${managerToken}`);
+    expect(managerGet.status).toBe(200);
+    expect(managerGet.body.name).toBe('DH Admin');
+
+    const updateResponse = await request(app.getHttpServer())
+      .patch(`/api/v1/projects/${projectId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'DH Admin Platform',
+        code: 'dh-admin-core',
+      });
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.code).toBe('DH-ADMIN-CORE');
+
+    const managerPatchForbidden = await request(app.getHttpServer())
+      .patch(`/api/v1/projects/${projectId}`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ name: 'No access' });
+    expect(managerPatchForbidden.status).toBe(403);
+
+    const deleteResponse = await request(app.getHttpServer())
+      .delete(`/api/v1/projects/${projectId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(deleteResponse.status).toBe(204);
+
+    const listInactive = await request(app.getHttpServer())
+      .get(`/api/v1/projects?organizationId=${org.body.id}&isActive=false`)
+      .set('Authorization', `Bearer ${managerToken}`);
+    expect(listInactive.status).toBe(200);
+    expect(listInactive.body.total).toBe(1);
+    expect(listInactive.body.items[0].isActive).toBe(false);
+  });
 });

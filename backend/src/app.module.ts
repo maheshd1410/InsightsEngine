@@ -9,6 +9,7 @@ import { DashboardsModule } from './dashboards/dashboards.module';
 import { ActionItemsModule } from './action-items/action-items.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { ProjectsModule } from './projects/projects.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 
@@ -22,6 +23,7 @@ import { RolesGuard } from './auth/roles.guard';
     DashboardsModule,
     ActionItemsModule,
     UsersModule,
+    ProjectsModule,
     AuthModule,
   ],
   providers: [
