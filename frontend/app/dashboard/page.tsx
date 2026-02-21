@@ -35,8 +35,19 @@ type Team = {
   name: string;
 };
 
+type Project = {
+  id: string;
+  organizationId: string;
+  teamId?: string;
+  name: string;
+  code: string;
+  description?: string;
+  isActive: boolean;
+};
+
 type PlanningCycle = {
   id: string;
+  projectId: string;
   teamId: string;
   name: string;
   startDate: string;
@@ -104,10 +115,12 @@ export default function HomePage() {
 
   const [organizations, setOrganizations] = useState<ListResponse<Organization>>(defaultList());
   const [teams, setTeams] = useState<ListResponse<Team>>(defaultList());
+  const [projects, setProjects] = useState<ListResponse<Project>>(defaultList());
   const [cycles, setCycles] = useState<ListResponse<PlanningCycle>>(defaultList());
   const [capacityPlans, setCapacityPlans] = useState<ListResponse<CapacityPlan>>(defaultList());
 
   const [selectedOrganizationId, setSelectedOrganizationId] = useState('');
+  const [selectedProjectId, setSelectedProjectId] = useState('');
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [selectedCycleId, setSelectedCycleId] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -131,7 +144,14 @@ export default function HomePage() {
   const [editOrgCode, setEditOrgCode] = useState('');
   const [newTeamOrganizationId, setNewTeamOrganizationId] = useState('');
   const [newTeamName, setNewTeamName] = useState('');
+  const [newProjectOrganizationId, setNewProjectOrganizationId] = useState('');
+  const [newProjectTeamId, setNewProjectTeamId] = useState('');
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectCode, setNewProjectCode] = useState('');
+  const [newProjectDescription, setNewProjectDescription] = useState('');
+  const [projectFilterActive, setProjectFilterActive] = useState<'all' | 'active' | 'inactive'>('all');
   const [adminCycleTeamId, setAdminCycleTeamId] = useState('');
+  const [adminCycleProjectId, setAdminCycleProjectId] = useState('');
   const [adminCycleName, setAdminCycleName] = useState('');
   const [adminCycleStartDate, setAdminCycleStartDate] = useState('');
   const [adminCycleEndDate, setAdminCycleEndDate] = useState('');
@@ -179,22 +199,64 @@ export default function HomePage() {
 
   const visibleTeamIds = useMemo(() => new Set(visibleTeams.map((team) => team.id)), [visibleTeams]);
 
+  const visibleProjects = useMemo(
+    () =>
+      projects.items.filter((project) => {
+        if (!activeOrganizationIds.has(project.organizationId)) {
+          return false;
+        }
+        if (project.teamId && !visibleTeamIds.has(project.teamId)) {
+          return false;
+        }
+        return project.isActive;
+      }),
+    [projects.items, activeOrganizationIds, visibleTeamIds],
+  );
+
+  const selectedProject = useMemo(
+    () => visibleProjects.find((project) => project.id === selectedProjectId) ?? null,
+    [selectedProjectId, visibleProjects],
+  );
+
   const visibleCycles = useMemo(
-    () => cycles.items.filter((cycle) => visibleTeamIds.has(cycle.teamId)),
-    [cycles.items, visibleTeamIds],
+    () =>
+      cycles.items.filter((cycle) => {
+        if (!visibleTeamIds.has(cycle.teamId)) {
+          return false;
+        }
+        if (!visibleProjects.some((project) => project.id === cycle.projectId)) {
+          return false;
+        }
+        return true;
+      }),
+    [cycles.items, visibleTeamIds, visibleProjects],
   );
 
   const organizationOptions = activeOrganizations;
 
   const teamOptions = useMemo(() => {
+    if (selectedProject) {
+      if (selectedProject.teamId) {
+        return visibleTeams.filter((team) => team.id === selectedProject.teamId);
+      }
+      return visibleTeams.filter((team) => team.organizationId === selectedProject.organizationId);
+    }
     if (!selectedOrganizationId) return visibleTeams;
     return visibleTeams.filter((team) => team.organizationId === selectedOrganizationId);
-  }, [selectedOrganizationId, visibleTeams]);
+  }, [selectedOrganizationId, selectedProject, visibleTeams]);
 
   const cycleOptions = useMemo(() => {
+    if (selectedProjectId && selectedTeamId) {
+      return visibleCycles.filter(
+        (cycle) => cycle.teamId === selectedTeamId && cycle.projectId === selectedProjectId,
+      );
+    }
+    if (selectedProjectId) {
+      return visibleCycles.filter((cycle) => cycle.projectId === selectedProjectId);
+    }
     if (!selectedTeamId) return visibleCycles;
     return visibleCycles.filter((cycle) => cycle.teamId === selectedTeamId);
-  }, [selectedTeamId, visibleCycles]);
+  }, [selectedProjectId, selectedTeamId, visibleCycles]);
 
   const selectedOrganization = useMemo(
     () => activeOrganizations.find((org) => org.id === selectedOrganizationId) ?? null,
@@ -218,15 +280,17 @@ export default function HomePage() {
       capacityPlans.items.map((plan) => {
         const team = visibleTeams.find((item) => item.id === plan.teamId);
         const cycle = visibleCycles.find((item) => item.id === plan.planningCycleId);
+        const project = visibleProjects.find((item) => item.id === cycle?.projectId);
         return {
           ...plan,
           teamName: team?.name ?? 'Unknown team',
+          projectName: project?.name ?? 'Unknown project',
           cycleName: cycle?.name ?? 'Unknown cycle',
           cycleStartDate: cycle?.startDate ?? '',
           cycleEndDate: cycle?.endDate ?? '',
         };
       }),
-    [capacityPlans.items, visibleCycles, visibleTeams],
+    [capacityPlans.items, visibleCycles, visibleProjects, visibleTeams],
   );
 
   const filteredCapacityRows = useMemo(() => {
@@ -239,7 +303,8 @@ export default function HomePage() {
       rows = rows.filter(
         (row) =>
           row.teamName.toLowerCase().includes(searchTerm) ||
-          row.cycleName.toLowerCase().includes(searchTerm),
+          row.cycleName.toLowerCase().includes(searchTerm) ||
+          row.projectName.toLowerCase().includes(searchTerm),
       );
     }
 
@@ -399,9 +464,11 @@ export default function HomePage() {
       try {
         let orgItems: Organization[] = [];
         let teamItems: Team[] = [];
+        let projectItems: Project[] = [];
         let cycleItems: PlanningCycle[] = [];
         let orgCount = 0;
         let teamCount = 0;
+        let projectCount = 0;
         let cycleCount = 0;
         const failures: string[] = [];
 
@@ -435,6 +502,38 @@ export default function HomePage() {
         }
 
         try {
+          const projectPayload = await apiRequest<ListResponse<Project>>(
+            '/projects?page=1&pageSize=100',
+          );
+          setProjects(projectPayload);
+          projectItems = projectPayload.items;
+          const activeOrganizationIdsFromPayload = new Set(
+            orgItems
+              .filter((organization) => organization.isActive)
+              .map((organization) => organization.id),
+          );
+          const activeTeamIdsFromPayload = new Set(
+            teamItems
+              .filter((team) => activeOrganizationIdsFromPayload.has(team.organizationId))
+              .map((team) => team.id),
+          );
+          projectCount = projectPayload.items.filter((project) => {
+            if (!project.isActive) {
+              return false;
+            }
+            if (!activeOrganizationIdsFromPayload.has(project.organizationId)) {
+              return false;
+            }
+            if (project.teamId && !activeTeamIdsFromPayload.has(project.teamId)) {
+              return false;
+            }
+            return true;
+          }).length;
+        } catch (error) {
+          failures.push(`projects: ${error instanceof Error ? error.message : 'request failed'}`);
+        }
+
+        try {
           const cyclePayload = await apiRequest<ListResponse<PlanningCycle>>(
             '/planning-cycles?page=1&pageSize=100',
           );
@@ -450,7 +549,16 @@ export default function HomePage() {
               .filter((team) => activeOrganizationIdsFromPayload.has(team.organizationId))
               .map((team) => team.id),
           );
-          cycleCount = cycleItems.filter((cycle) => activeTeamIdsFromPayload.has(cycle.teamId)).length;
+          const activeProjectIdsFromPayload = new Set(
+            projectItems
+              .filter((project) => project.isActive)
+              .map((project) => project.id),
+          );
+          cycleCount = cycleItems.filter(
+            (cycle) =>
+              activeTeamIdsFromPayload.has(cycle.teamId) &&
+              activeProjectIdsFromPayload.has(cycle.projectId),
+          ).length;
         } catch (error) {
           failures.push(
             `planning-cycles: ${error instanceof Error ? error.message : 'request failed'}`,
@@ -459,13 +567,15 @@ export default function HomePage() {
 
         setCapacityPlans(defaultList());
 
-        const totalLoaded = orgCount + teamCount + cycleCount;
+        const totalLoaded = orgCount + teamCount + projectCount + cycleCount;
         if (totalLoaded === 0) {
           setLookupMessage(
-            'Reference data loaded, but no records exist yet. Create Organization, Team, and Planning Cycle first.',
+            'Reference data loaded, but no records exist yet. Create Organization, Team, Project, and Planning Cycle first.',
           );
         } else {
-          setLookupMessage(`${successMessage} (Orgs: ${orgCount}, Teams: ${teamCount}, Cycles: ${cycleCount})`);
+          setLookupMessage(
+            `${successMessage} (Orgs: ${orgCount}, Teams: ${teamCount}, Projects: ${projectCount}, Cycles: ${cycleCount})`,
+          );
         }
 
         if (failures.length > 0) {
@@ -493,6 +603,13 @@ export default function HomePage() {
   useEffect(() => {
     if (selectedOrganizationId && !activeOrganizations.some((org) => org.id === selectedOrganizationId)) {
       setSelectedOrganizationId('');
+      setSelectedProjectId('');
+      setSelectedTeamId('');
+      setSelectedCycleId('');
+      return;
+    }
+    if (selectedProjectId && !visibleProjects.some((project) => project.id === selectedProjectId)) {
+      setSelectedProjectId('');
       setSelectedTeamId('');
       setSelectedCycleId('');
       return;
@@ -507,10 +624,12 @@ export default function HomePage() {
     }
   }, [
     activeOrganizations,
+    selectedProjectId,
     selectedCycleId,
     selectedOrganizationId,
     selectedTeamId,
     visibleCycles,
+    visibleProjects,
     visibleTeams,
   ]);
 
@@ -537,14 +656,15 @@ export default function HomePage() {
 
   const createPlanningCycle = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selectedTeamId) {
-      setWorkspaceError('Select a team before creating a planning cycle.');
+    if (!selectedProjectId || !selectedTeamId) {
+      setWorkspaceError('Select a project and team before creating a planning cycle.');
       return;
     }
     await runWorkspaceAction(async () => {
       await apiRequest<PlanningCycle>('/planning-cycles', {
         method: 'POST',
         body: JSON.stringify({
+          projectId: selectedProjectId,
           teamId: selectedTeamId,
           name: newCycleName.trim(),
           startDate: newCycleStartDate,
@@ -592,6 +712,9 @@ export default function HomePage() {
       const query = new URLSearchParams({ page: '1', pageSize: '100' });
       if (selectedTeamId) {
         query.set('teamId', selectedTeamId);
+      }
+      if (selectedProjectId) {
+        query.set('projectId', selectedProjectId);
       }
       if (selectedCycleId) {
         query.set('planningCycleId', selectedCycleId);
@@ -679,16 +802,49 @@ export default function HomePage() {
     }, 'Team created.');
   };
 
+  const createProjectAdmin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!newProjectOrganizationId) {
+      setAdminError('Select organization before creating a project.');
+      return;
+    }
+    if (newProjectTeamId) {
+      const selectedTeam = visibleTeams.find((team) => team.id === newProjectTeamId);
+      if (!selectedTeam || selectedTeam.organizationId !== newProjectOrganizationId) {
+        setAdminError('Selected team must belong to selected organization.');
+        return;
+      }
+    }
+
+    await runAdminAction(async () => {
+      await apiRequest<Project>('/projects', {
+        method: 'POST',
+        body: JSON.stringify({
+          organizationId: newProjectOrganizationId,
+          teamId: newProjectTeamId || undefined,
+          name: newProjectName.trim(),
+          code: newProjectCode.trim(),
+          description: newProjectDescription.trim() || undefined,
+        }),
+      });
+      setNewProjectName('');
+      setNewProjectCode('');
+      setNewProjectDescription('');
+      await bootstrapLookups('Project created and lists refreshed.');
+    }, 'Project created.');
+  };
+
   const createPlanningCycleAdmin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!adminCycleTeamId) {
-      setAdminError('Select team before creating planning cycle.');
+    if (!adminCycleProjectId || !adminCycleTeamId) {
+      setAdminError('Select project and team before creating planning cycle.');
       return;
     }
     await runAdminAction(async () => {
       await apiRequest<PlanningCycle>('/planning-cycles', {
         method: 'POST',
         body: JSON.stringify({
+          projectId: adminCycleProjectId,
           teamId: adminCycleTeamId,
           name: adminCycleName.trim(),
           startDate: adminCycleStartDate,
@@ -785,6 +941,7 @@ export default function HomePage() {
               value={selectedOrganizationId}
               onChange={(event) => {
                 setSelectedOrganizationId(event.target.value);
+                setSelectedProjectId('');
                 setSelectedTeamId('');
                 setSelectedCycleId('');
               }}
@@ -795,6 +952,34 @@ export default function HomePage() {
                   {org.name} ({org.code})
                 </option>
               ))}
+            </select>
+          </div>
+          <div style={styles.field}>
+            <label style={styles.label}>Project</label>
+            <select
+              style={styles.input}
+              value={selectedProjectId}
+              onChange={(event) => {
+                const projectId = event.target.value;
+                setSelectedProjectId(projectId);
+                setSelectedCycleId('');
+                const project = visibleProjects.find((item) => item.id === projectId);
+                if (project?.teamId) {
+                  setSelectedTeamId(project.teamId);
+                }
+              }}
+            >
+              <option value="">All projects</option>
+              {visibleProjects
+                .filter(
+                  (project) =>
+                    !selectedOrganizationId || project.organizationId === selectedOrganizationId,
+                )
+                .map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name} ({project.code})
+                  </option>
+                ))}
             </select>
           </div>
           <div style={styles.field}>
@@ -852,10 +1037,32 @@ export default function HomePage() {
               {lookupLoading ? 'Loading...' : 'Reload Reference Data'}
             </button>
             <small style={styles.hint}>
-              Orgs: {activeOrganizations.length} | Teams: {visibleTeams.length} | Cycles:{' '}
-              {visibleCycles.length}
+              Orgs: {activeOrganizations.length} | Teams: {visibleTeams.length} | Projects:{' '}
+              {visibleProjects.length} | Cycles: {visibleCycles.length}
             </small>
           </div>
+        </div>
+        <div style={styles.statsRow}>
+          <article style={styles.statCard}>
+            <p style={styles.statLabel}>Organizations</p>
+            <p style={styles.statValue}>{activeOrganizations.length}</p>
+          </article>
+          <article style={styles.statCard}>
+            <p style={styles.statLabel}>Teams</p>
+            <p style={styles.statValue}>{visibleTeams.length}</p>
+          </article>
+          <article style={styles.statCard}>
+            <p style={styles.statLabel}>Projects</p>
+            <p style={styles.statValue}>{visibleProjects.length}</p>
+          </article>
+          <article style={styles.statCard}>
+            <p style={styles.statLabel}>Cycles</p>
+            <p style={styles.statValue}>{visibleCycles.length}</p>
+          </article>
+          <article style={styles.statCard}>
+            <p style={styles.statLabel}>Capacity Rows</p>
+            <p style={styles.statValue}>{filteredCapacityRows.length}</p>
+          </article>
         </div>
       </section>
 
@@ -945,6 +1152,31 @@ export default function HomePage() {
             <article style={styles.workspaceCard}>
               <h3 style={styles.cardTitle}>Create Planning Cycle</h3>
               <form style={styles.formStack} onSubmit={createPlanningCycle}>
+                <select
+                  style={styles.input}
+                  value={selectedProjectId}
+                  onChange={(event) => {
+                    const projectId = event.target.value;
+                    setSelectedProjectId(projectId);
+                    const project = visibleProjects.find((item) => item.id === projectId);
+                    if (project?.teamId) {
+                      setSelectedTeamId(project.teamId);
+                    }
+                  }}
+                  required
+                >
+                  <option value="">Select project</option>
+                  {visibleProjects
+                    .filter(
+                      (project) =>
+                        !selectedOrganizationId || project.organizationId === selectedOrganizationId,
+                    )
+                    .map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name} ({project.code})
+                      </option>
+                    ))}
+                </select>
                 <input
                   style={styles.input}
                   type="text"
@@ -1079,6 +1311,7 @@ export default function HomePage() {
             <table style={styles.table}>
               <thead>
                 <tr>
+                  <th style={styles.tableHeader}>Project</th>
                   <th style={styles.tableHeader}>Team</th>
                   <th style={styles.tableHeader}>Cycle</th>
                   <th style={styles.tableHeader}>Cycle Window</th>
@@ -1090,13 +1323,14 @@ export default function HomePage() {
               <tbody>
                 {filteredCapacityRows.length === 0 ? (
                   <tr>
-                    <td style={styles.tableCell} colSpan={showTechnicalDetails ? 6 : 5}>
+                    <td style={styles.tableCell} colSpan={showTechnicalDetails ? 7 : 6}>
                       No capacity plans match current filters.
                     </td>
                   </tr>
                 ) : (
                   filteredCapacityRows.map((plan) => (
                     <tr key={plan.id}>
+                      <td style={styles.tableCell}>{plan.projectName}</td>
                       <td style={styles.tableCell}>{plan.teamName}</td>
                       <td style={styles.tableCell}>{plan.cycleName}</td>
                       <td style={styles.tableCell}>
@@ -1195,8 +1429,90 @@ export default function HomePage() {
             </article>
 
             <article style={styles.workspaceCard}>
+              <h3 style={styles.cardTitle}>Create Project</h3>
+              <form style={styles.formStack} onSubmit={createProjectAdmin}>
+                <select
+                  style={styles.input}
+                  value={newProjectOrganizationId}
+                  onChange={(event) => {
+                    setNewProjectOrganizationId(event.target.value);
+                    setNewProjectTeamId('');
+                  }}
+                  required
+                >
+                  <option value="">Select organization</option>
+                  {activeOrganizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  style={styles.input}
+                  value={newProjectTeamId}
+                  onChange={(event) => setNewProjectTeamId(event.target.value)}
+                >
+                  <option value="">No team mapping</option>
+                  {visibleTeams
+                    .filter((team) => team.organizationId === newProjectOrganizationId)
+                    .map((team) => (
+                      <option key={team.id} value={team.id}>
+                        {team.name}
+                      </option>
+                    ))}
+                </select>
+                <input
+                  style={styles.input}
+                  type="text"
+                  placeholder="Project name"
+                  value={newProjectName}
+                  onChange={(event) => setNewProjectName(event.target.value)}
+                  required
+                />
+                <input
+                  style={styles.input}
+                  type="text"
+                  placeholder="Project code"
+                  value={newProjectCode}
+                  onChange={(event) => setNewProjectCode(event.target.value)}
+                  required
+                />
+                <input
+                  style={styles.input}
+                  type="text"
+                  placeholder="Description (optional)"
+                  value={newProjectDescription}
+                  onChange={(event) => setNewProjectDescription(event.target.value)}
+                />
+                <button style={styles.ctaButton} type="submit" disabled={adminLoading}>
+                  Create Project
+                </button>
+              </form>
+            </article>
+
+            <article style={styles.workspaceCard}>
               <h3 style={styles.cardTitle}>Create Planning Cycle</h3>
               <form style={styles.formStack} onSubmit={createPlanningCycleAdmin}>
+                <select
+                  style={styles.input}
+                  value={adminCycleProjectId}
+                  onChange={(event) => {
+                    const projectId = event.target.value;
+                    setAdminCycleProjectId(projectId);
+                    const project = visibleProjects.find((item) => item.id === projectId);
+                    if (project?.teamId) {
+                      setAdminCycleTeamId(project.teamId);
+                    }
+                  }}
+                  required
+                >
+                  <option value="">Select project</option>
+                  {visibleProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name} ({project.code})
+                    </option>
+                  ))}
+                </select>
                 <select
                   style={styles.input}
                   value={adminCycleTeamId}
@@ -1319,6 +1635,45 @@ export default function HomePage() {
 
           <div style={styles.workspaceGrid}>
             <article style={styles.workspaceCard}>
+              <h3 style={styles.cardTitle}>Projects</h3>
+              <div style={styles.formGrid}>
+                <select
+                  style={styles.input}
+                  value={projectFilterActive}
+                  onChange={(event) =>
+                    setProjectFilterActive(event.target.value as 'all' | 'active' | 'inactive')
+                  }
+                >
+                  <option value="all">All projects</option>
+                  <option value="active">Active projects</option>
+                  <option value="inactive">Inactive projects</option>
+                </select>
+              </div>
+              <ul style={styles.list}>
+                {projects.items
+                  .filter((project) => {
+                    if (projectFilterActive === 'active') return project.isActive;
+                    if (projectFilterActive === 'inactive') return !project.isActive;
+                    return true;
+                  })
+                  .map((project) => (
+                    <li key={project.id}>
+                      {project.name} ({project.code}) -{' '}
+                      {activeOrganizations.find((org) => org.id === project.organizationId)?.name ??
+                        'Unknown org'}
+                      {project.teamId
+                        ? ` / ${
+                            visibleTeams.find((team) => team.id === project.teamId)?.name ??
+                            'Unknown team'
+                          }`
+                        : ''}
+                      {showTechnicalDetails && ` | ${project.id}`}
+                    </li>
+                  ))}
+                {projects.items.length === 0 && <li>No projects available.</li>}
+              </ul>
+            </article>
+            <article style={styles.workspaceCard}>
               <h3 style={styles.cardTitle}>Teams</h3>
               <ul style={styles.list}>
                 {visibleTeams.length === 0 && <li>No teams available.</li>}
@@ -1352,13 +1707,13 @@ export default function HomePage() {
 const styles: Record<string, CSSProperties> = {
   page: {
     minHeight: '100vh',
-    background: 'linear-gradient(160deg, #f4efe7 0%, #f6f9fc 55%, #ecf7f2 100%)',
-    padding: '24px 16px 42px',
+    background: 'linear-gradient(160deg, #f3eee5 0%, #f4f9fd 52%, #ebf7f1 100%)',
+    padding: '24px 18px 42px',
     fontFamily: '"Space Grotesk", "Segoe UI", sans-serif',
     color: '#1a2b35',
   },
   hero: {
-    maxWidth: 1120,
+    maxWidth: 1240,
     margin: '0 auto 12px',
   },
   title: {
@@ -1378,13 +1733,13 @@ const styles: Record<string, CSSProperties> = {
     flexWrap: 'wrap',
   },
   panel: {
-    maxWidth: 1120,
+    maxWidth: 1240,
     margin: '0 auto 14px',
     borderRadius: 14,
-    border: '1px solid #d5e2e8',
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
-    padding: 14,
-    boxShadow: '0 12px 28px rgba(20, 44, 65, 0.08)',
+    border: '1px solid #d3e2e8',
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+    padding: 16,
+    boxShadow: '0 14px 30px rgba(20, 44, 65, 0.09)',
   },
   toolbar: {
     display: 'flex',
@@ -1432,8 +1787,34 @@ const styles: Record<string, CSSProperties> = {
   filterGrid: {
     marginTop: 12,
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
     gap: 10,
+  },
+  statsRow: {
+    marginTop: 10,
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+    gap: 8,
+  },
+  statCard: {
+    border: '1px solid #d6e5ea',
+    background: 'linear-gradient(180deg, #ffffff 0%, #f5fafb 100%)',
+    borderRadius: 12,
+    padding: '10px 12px',
+  },
+  statLabel: {
+    margin: 0,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    color: '#4a6370',
+    fontWeight: 700,
+  },
+  statValue: {
+    margin: '4px 0 0',
+    fontSize: 20,
+    fontWeight: 800,
+    color: '#1e3640',
   },
   field: {
     display: 'flex',
