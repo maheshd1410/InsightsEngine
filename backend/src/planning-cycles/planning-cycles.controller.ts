@@ -21,6 +21,7 @@ export class PlanningCyclesController {
   @Roles('admin', 'engineering_manager')
   @Get()
   listPlanningCycles(
+    @Query('projectId') projectId?: string,
     @Query('teamId') teamId?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
@@ -30,6 +31,9 @@ export class PlanningCyclesController {
     const page = this.parsePositiveInt(pageRaw, 'page');
     const pageSize = this.parsePositiveInt(pageSizeRaw, 'pageSize');
 
+    if (projectId && !this.isUuid(projectId)) {
+      throw new BadRequestException('projectId must be a valid UUID.');
+    }
     if (teamId && !this.isUuid(teamId)) {
       throw new BadRequestException('teamId must be a valid UUID.');
     }
@@ -40,14 +44,14 @@ export class PlanningCyclesController {
       throw new BadRequestException('dateTo must be in YYYY-MM-DD format.');
     }
 
-    return this.planningCyclesService.list(page, pageSize, teamId, dateFrom, dateTo);
+    return this.planningCyclesService.list(page, pageSize, projectId, teamId, dateFrom, dateTo);
   }
 
   @Roles('admin', 'engineering_manager')
   @Post()
   createPlanningCycle(@Body() input: CreatePlanningCycleRequest): PlanningCycle {
-    if (!this.isUuid(input.teamId)) {
-      throw new BadRequestException('teamId must be a valid UUID.');
+    if (!this.isUuid(input.projectId) || !this.isUuid(input.teamId)) {
+      throw new BadRequestException('projectId and teamId must be valid UUID values.');
     }
     if (!this.isDateString(input.startDate) || !this.isDateString(input.endDate)) {
       throw new BadRequestException('startDate and endDate must be in YYYY-MM-DD format.');

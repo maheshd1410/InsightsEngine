@@ -1,5 +1,6 @@
 export interface PlanningCycle {
   id: string;
+  projectId: string;
   teamId: string;
   name: string;
   startDate: string;
@@ -9,6 +10,7 @@ export interface PlanningCycle {
 }
 
 export interface CreatePlanningCycleRequest {
+  projectId: string;
   teamId: string;
   name: string;
   startDate: string;

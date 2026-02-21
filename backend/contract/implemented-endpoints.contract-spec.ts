@@ -124,10 +124,22 @@ describe('Implemented API contracts', () => {
       }),
     );
 
+    const projectForCycle = await request(app.getHttpServer())
+      .post('/api/v1/projects')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        organizationId: org.body.id,
+        teamId: teams.body.id,
+        name: 'Contract Program',
+        code: 'ctr-program',
+      });
+    expect(projectForCycle.status).toBe(201);
+
     const cycle = await request(app.getHttpServer())
       .post('/api/v1/planning-cycles')
       .set('Authorization', `Bearer ${managerToken}`)
       .send({
+        projectId: projectForCycle.body.id,
         teamId: teams.body.id,
         name: 'Contract Sprint',
         startDate: '2026-08-01',
@@ -137,6 +149,7 @@ describe('Implemented API contracts', () => {
     expect(cycle.body).toEqual(
       expect.objectContaining({
         id: expect.any(String),
+        projectId: projectForCycle.body.id,
         teamId: teams.body.id,
         name: 'Contract Sprint',
         startDate: '2026-08-01',

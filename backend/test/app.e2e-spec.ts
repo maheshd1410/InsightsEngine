@@ -216,10 +216,22 @@ describe('App (e2e)', () => {
       .send({ organizationId: org.body.id, name: 'Cycle Team' });
     expect(team.status).toBe(201);
 
+    const project = await request(app.getHttpServer())
+      .post('/api/v1/projects')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        organizationId: org.body.id,
+        teamId: team.body.id,
+        name: 'Cycle Project',
+        code: 'cycle-prj',
+      });
+    expect(project.status).toBe(201);
+
     const managerCreate = await request(app.getHttpServer())
       .post('/api/v1/planning-cycles')
       .set('Authorization', `Bearer ${managerToken}`)
       .send({
+        projectId: project.body.id,
         teamId: team.body.id,
         name: 'Sprint 12',
         startDate: '2026-04-01',
@@ -231,6 +243,7 @@ describe('App (e2e)', () => {
       .post('/api/v1/planning-cycles')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
+        projectId: project.body.id,
         teamId: team.body.id,
         name: 'Sprint 13',
         startDate: '2026-04-15',
@@ -240,7 +253,7 @@ describe('App (e2e)', () => {
 
     const listFiltered = await request(app.getHttpServer())
       .get(
-        `/api/v1/planning-cycles?teamId=${team.body.id}&dateFrom=2026-04-01&dateTo=2026-04-30&page=1&pageSize=10`,
+        `/api/v1/planning-cycles?projectId=${project.body.id}&teamId=${team.body.id}&dateFrom=2026-04-01&dateTo=2026-04-30&page=1&pageSize=10`,
       )
       .set('Authorization', `Bearer ${managerToken}`);
     expect(listFiltered.status).toBe(200);
@@ -268,10 +281,22 @@ describe('App (e2e)', () => {
       .send({ organizationId: org.body.id, name: 'Capacity Team' });
     expect(team.status).toBe(201);
 
+    const project = await request(app.getHttpServer())
+      .post('/api/v1/projects')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        organizationId: org.body.id,
+        teamId: team.body.id,
+        name: 'Capacity Project',
+        code: 'capacity-prj',
+      });
+    expect(project.status).toBe(201);
+
     const cycle = await request(app.getHttpServer())
       .post('/api/v1/planning-cycles')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
+        projectId: project.body.id,
         teamId: team.body.id,
         name: 'Sprint 20',
         startDate: '2026-06-01',
@@ -336,10 +361,22 @@ describe('App (e2e)', () => {
       .send({ organizationId: org.body.id, name: 'Dashboard Team' });
     expect(team.status).toBe(201);
 
+    const project = await request(app.getHttpServer())
+      .post('/api/v1/projects')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        organizationId: org.body.id,
+        teamId: team.body.id,
+        name: 'Dashboard Project',
+        code: 'dashboard-prj',
+      });
+    expect(project.status).toBe(201);
+
     const cycle = await request(app.getHttpServer())
       .post('/api/v1/planning-cycles')
       .set('Authorization', `Bearer ${managerToken}`)
       .send({
+        projectId: project.body.id,
         teamId: team.body.id,
         name: 'Sprint 30',
         startDate: '2026-07-01',

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { ProjectsService } from '../projects/projects.service';
 import { TeamsService } from '../teams/teams.service';
 import {
   CreatePlanningCycleRequest,
@@ -11,7 +12,10 @@ import {
 export class PlanningCyclesService {
   private readonly planningCycles: PlanningCycle[] = [];
 
-  constructor(private readonly teamsService: TeamsService) {}
+  constructor(
+    private readonly teamsService: TeamsService,
+    private readonly projectsService: ProjectsService,
+  ) {}
 
   listAll(): PlanningCycle[] {
     return [...this.planningCycles];
@@ -20,11 +24,16 @@ export class PlanningCyclesService {
   list(
     page: number,
     pageSize: number,
+    projectId?: string,
     teamId?: string,
     dateFrom?: string,
     dateTo?: string,
   ): PlanningCycleListResponse {
     let filtered = [...this.planningCycles];
+
+    if (projectId) {
+      filtered = filtered.filter((item) => item.projectId === projectId);
+    }
 
     if (teamId) {
       filtered = filtered.filter((item) => item.teamId === teamId);
@@ -60,8 +69,10 @@ export class PlanningCyclesService {
 
   create(input: CreatePlanningCycleRequest): PlanningCycle {
     const name = input.name?.trim();
-    if (!input.teamId || !name || !input.startDate || !input.endDate) {
-      throw new BadRequestException('teamId, name, startDate, and endDate are required.');
+    if (!input.projectId || !input.teamId || !name || !input.startDate || !input.endDate) {
+      throw new BadRequestException(
+        'projectId, teamId, name, startDate, and endDate are required.',
+      );
     }
 
     if (input.endDate < input.startDate) {
@@ -73,8 +84,20 @@ export class PlanningCyclesService {
       throw new BadRequestException('Cannot create planning cycle for inactive team.');
     }
 
+    const project = this.projectsService.getById(input.projectId);
+    if (!project.isActive) {
+      throw new BadRequestException('Cannot create planning cycle for inactive project.');
+    }
+    if (project.teamId && project.teamId !== input.teamId) {
+      throw new BadRequestException('projectId does not belong to provided teamId.');
+    }
+    if (team.organizationId !== project.organizationId) {
+      throw new BadRequestException('teamId organization does not match project organization.');
+    }
+
     const duplicate = this.planningCycles.find(
       (item) =>
+        item.projectId === input.projectId &&
         item.teamId === input.teamId &&
         item.name.toLowerCase() === name.toLowerCase() &&
         item.startDate === input.startDate &&
@@ -87,6 +110,7 @@ export class PlanningCyclesService {
     const now = new Date().toISOString();
     const planningCycle: PlanningCycle = {
       id: randomUUID(),
+      projectId: input.projectId,
       teamId: input.teamId,
       name,
       startDate: input.startDate,
