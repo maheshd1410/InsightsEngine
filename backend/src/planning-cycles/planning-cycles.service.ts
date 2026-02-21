@@ -1,21 +1,18 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { ProjectsService } from '../projects/projects.service';
-import { TeamsService } from '../teams/teams.service';
 import {
   CreatePlanningCycleRequest,
   PlanningCycle,
   PlanningCycleListResponse,
+  UpdatePlanningCycleRequest,
 } from './planning-cycles.types';
 
 @Injectable()
 export class PlanningCyclesService {
   private readonly planningCycles: PlanningCycle[] = [];
 
-  constructor(
-    private readonly teamsService: TeamsService,
-    private readonly projectsService: ProjectsService,
-  ) {}
+  constructor(private readonly projectsService: ProjectsService) {}
 
   listAll(): PlanningCycle[] {
     return [...this.planningCycles];
@@ -25,18 +22,14 @@ export class PlanningCyclesService {
     page: number,
     pageSize: number,
     projectId?: string,
-    teamId?: string,
     dateFrom?: string,
     dateTo?: string,
+    isActive?: boolean,
   ): PlanningCycleListResponse {
     let filtered = [...this.planningCycles];
 
     if (projectId) {
       filtered = filtered.filter((item) => item.projectId === projectId);
-    }
-
-    if (teamId) {
-      filtered = filtered.filter((item) => item.teamId === teamId);
     }
 
     if (dateFrom) {
@@ -45,6 +38,9 @@ export class PlanningCyclesService {
 
     if (dateTo) {
       filtered = filtered.filter((item) => item.endDate <= dateTo);
+    }
+    if (isActive !== undefined) {
+      filtered = filtered.filter((item) => item.isActive === isActive);
     }
 
     const start = (page - 1) * pageSize;
@@ -69,9 +65,9 @@ export class PlanningCyclesService {
 
   create(input: CreatePlanningCycleRequest): PlanningCycle {
     const name = input.name?.trim();
-    if (!input.projectId || !input.teamId || !name || !input.startDate || !input.endDate) {
+    if (!input.projectId || !name || !input.startDate || !input.endDate) {
       throw new BadRequestException(
-        'projectId, teamId, name, startDate, and endDate are required.',
+        'projectId, name, startDate, and endDate are required.',
       );
     }
 
@@ -79,26 +75,15 @@ export class PlanningCyclesService {
       throw new BadRequestException('endDate must be greater than or equal to startDate.');
     }
 
-    const team = this.teamsService.getById(input.teamId);
-    if (!team.isActive) {
-      throw new BadRequestException('Cannot create planning cycle for inactive team.');
-    }
-
     const project = this.projectsService.getById(input.projectId);
     if (!project.isActive) {
       throw new BadRequestException('Cannot create planning cycle for inactive project.');
-    }
-    if (project.teamId && project.teamId !== input.teamId) {
-      throw new BadRequestException('projectId does not belong to provided teamId.');
-    }
-    if (team.organizationId !== project.organizationId) {
-      throw new BadRequestException('teamId organization does not match project organization.');
     }
 
     const duplicate = this.planningCycles.find(
       (item) =>
         item.projectId === input.projectId &&
-        item.teamId === input.teamId &&
+        item.isActive &&
         item.name.toLowerCase() === name.toLowerCase() &&
         item.startDate === input.startDate &&
         item.endDate === input.endDate,
@@ -111,15 +96,66 @@ export class PlanningCyclesService {
     const planningCycle: PlanningCycle = {
       id: randomUUID(),
       projectId: input.projectId,
-      teamId: input.teamId,
       name,
       startDate: input.startDate,
       endDate: input.endDate,
+      isActive: true,
       createdAt: now,
       updatedAt: now,
     };
 
     this.planningCycles.push(planningCycle);
     return planningCycle;
+  }
+
+  update(planningCycleId: string, input: UpdatePlanningCycleRequest): PlanningCycle {
+    const planningCycle = this.getById(planningCycleId);
+
+    const projectId =
+      input.projectId !== undefined ? input.projectId.trim() : planningCycle.projectId;
+    const name = input.name !== undefined ? input.name.trim() : planningCycle.name;
+    const startDate = input.startDate ?? planningCycle.startDate;
+    const endDate = input.endDate ?? planningCycle.endDate;
+
+    if (!projectId || !name || !startDate || !endDate) {
+      throw new BadRequestException('projectId, name, startDate, and endDate cannot be empty.');
+    }
+    if (endDate < startDate) {
+      throw new BadRequestException('endDate must be greater than or equal to startDate.');
+    }
+
+    const project = this.projectsService.getById(projectId);
+    if (!project.isActive) {
+      throw new BadRequestException('Cannot assign sprint to inactive project.');
+    }
+
+    const duplicate = this.planningCycles.find(
+      (item) =>
+        item.id !== planningCycleId &&
+        item.projectId === projectId &&
+        item.isActive &&
+        item.name.toLowerCase() === name.toLowerCase() &&
+        item.startDate === startDate &&
+        item.endDate === endDate,
+    );
+    if (duplicate) {
+      throw new BadRequestException('Planning cycle already exists for this project and date range.');
+    }
+
+    planningCycle.projectId = projectId;
+    planningCycle.name = name;
+    planningCycle.startDate = startDate;
+    planningCycle.endDate = endDate;
+    if (input.isActive !== undefined) {
+      planningCycle.isActive = input.isActive;
+    }
+    planningCycle.updatedAt = new Date().toISOString();
+    return planningCycle;
+  }
+
+  softDelete(planningCycleId: string): void {
+    const planningCycle = this.getById(planningCycleId);
+    planningCycle.isActive = false;
+    planningCycle.updatedAt = new Date().toISOString();
   }
 }

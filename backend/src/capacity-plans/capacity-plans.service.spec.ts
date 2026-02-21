@@ -42,7 +42,6 @@ describe('CapacityPlansService', () => {
     });
     const cycle = planningCyclesService.create({
       projectId: project.id,
-      teamId: team.id,
       name: 'Sprint 14',
       startDate: '2026-05-01',
       endDate: '2026-05-14',
@@ -70,7 +69,6 @@ describe('CapacityPlansService', () => {
     });
     const cycle = planningCyclesService.create({
       projectId: project.id,
-      teamId: team.id,
       name: 'Sprint 14',
       startDate: '2026-05-01',
       endDate: '2026-05-14',
@@ -104,14 +102,12 @@ describe('CapacityPlansService', () => {
 
     const cycle1 = planningCyclesService.create({
       projectId: project1.id,
-      teamId: team1.id,
       name: 'Sprint 14',
       startDate: '2026-05-01',
       endDate: '2026-05-14',
     });
     const cycle2 = planningCyclesService.create({
       projectId: project2.id,
-      teamId: team2.id,
       name: 'Sprint 15',
       startDate: '2026-05-15',
       endDate: '2026-05-28',

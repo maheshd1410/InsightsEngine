@@ -48,10 +48,10 @@ type Project = {
 type PlanningCycle = {
   id: string;
   projectId: string;
-  teamId: string;
   name: string;
   startDate: string;
   endDate: string;
+  isActive: boolean;
 };
 
 type CapacityPlan = {
@@ -150,11 +150,11 @@ export default function HomePage() {
   const [newProjectCode, setNewProjectCode] = useState('');
   const [newProjectDescription, setNewProjectDescription] = useState('');
   const [projectFilterActive, setProjectFilterActive] = useState<'all' | 'active' | 'inactive'>('all');
-  const [adminCycleTeamId, setAdminCycleTeamId] = useState('');
-  const [adminCycleProjectId, setAdminCycleProjectId] = useState('');
-  const [adminCycleName, setAdminCycleName] = useState('');
-  const [adminCycleStartDate, setAdminCycleStartDate] = useState('');
-  const [adminCycleEndDate, setAdminCycleEndDate] = useState('');
+  const [editCycleId, setEditCycleId] = useState('');
+  const [editCycleProjectId, setEditCycleProjectId] = useState('');
+  const [editCycleName, setEditCycleName] = useState('');
+  const [editCycleStartDate, setEditCycleStartDate] = useState('');
+  const [editCycleEndDate, setEditCycleEndDate] = useState('');
 
   const [portfolioData, setPortfolioData] = useState<PortfolioDashboardResponse | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(false);
@@ -221,7 +221,7 @@ export default function HomePage() {
   const visibleCycles = useMemo(
     () =>
       cycles.items.filter((cycle) => {
-        if (!visibleTeamIds.has(cycle.teamId)) {
+        if (!cycle.isActive) {
           return false;
         }
         if (!visibleProjects.some((project) => project.id === cycle.projectId)) {
@@ -229,7 +229,7 @@ export default function HomePage() {
         }
         return true;
       }),
-    [cycles.items, visibleTeamIds, visibleProjects],
+    [cycles.items, visibleProjects],
   );
 
   const organizationOptions = activeOrganizations;
@@ -246,17 +246,11 @@ export default function HomePage() {
   }, [selectedOrganizationId, selectedProject, visibleTeams]);
 
   const cycleOptions = useMemo(() => {
-    if (selectedProjectId && selectedTeamId) {
-      return visibleCycles.filter(
-        (cycle) => cycle.teamId === selectedTeamId && cycle.projectId === selectedProjectId,
-      );
-    }
     if (selectedProjectId) {
       return visibleCycles.filter((cycle) => cycle.projectId === selectedProjectId);
     }
-    if (!selectedTeamId) return visibleCycles;
-    return visibleCycles.filter((cycle) => cycle.teamId === selectedTeamId);
-  }, [selectedProjectId, selectedTeamId, visibleCycles]);
+    return visibleCycles;
+  }, [selectedProjectId, visibleCycles]);
 
   const selectedOrganization = useMemo(
     () => activeOrganizations.find((org) => org.id === selectedOrganizationId) ?? null,
@@ -555,9 +549,7 @@ export default function HomePage() {
               .map((project) => project.id),
           );
           cycleCount = cycleItems.filter(
-            (cycle) =>
-              activeTeamIdsFromPayload.has(cycle.teamId) &&
-              activeProjectIdsFromPayload.has(cycle.projectId),
+            (cycle) => cycle.isActive && activeProjectIdsFromPayload.has(cycle.projectId),
           ).length;
         } catch (error) {
           failures.push(
@@ -656,8 +648,8 @@ export default function HomePage() {
 
   const createPlanningCycle = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selectedProjectId || !selectedTeamId) {
-      setWorkspaceError('Select a project and team before creating a planning cycle.');
+    if (!selectedProjectId) {
+      setWorkspaceError('Select a project before creating a planning cycle.');
       return;
     }
     await runWorkspaceAction(async () => {
@@ -665,7 +657,6 @@ export default function HomePage() {
         method: 'POST',
         body: JSON.stringify({
           projectId: selectedProjectId,
-          teamId: selectedTeamId,
           name: newCycleName.trim(),
           startDate: newCycleStartDate,
           endDate: newCycleEndDate,
@@ -712,9 +703,6 @@ export default function HomePage() {
       const query = new URLSearchParams({ page: '1', pageSize: '100' });
       if (selectedTeamId) {
         query.set('teamId', selectedTeamId);
-      }
-      if (selectedProjectId) {
-        query.set('projectId', selectedProjectId);
       }
       if (selectedCycleId) {
         query.set('planningCycleId', selectedCycleId);
@@ -834,28 +822,45 @@ export default function HomePage() {
     }, 'Project created.');
   };
 
-  const createPlanningCycleAdmin = async (event: FormEvent<HTMLFormElement>) => {
+  const startCycleEdit = (cycle: PlanningCycle) => {
+    setEditCycleId(cycle.id);
+    setEditCycleProjectId(cycle.projectId);
+    setEditCycleName(cycle.name);
+    setEditCycleStartDate(cycle.startDate);
+    setEditCycleEndDate(cycle.endDate);
+  };
+
+  const updateSprint = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!adminCycleProjectId || !adminCycleTeamId) {
-      setAdminError('Select project and team before creating planning cycle.');
+    if (!editCycleId || !editCycleProjectId) {
+      setWorkspaceError('Select sprint to edit.');
       return;
     }
-    await runAdminAction(async () => {
-      await apiRequest<PlanningCycle>('/planning-cycles', {
-        method: 'POST',
+    await runWorkspaceAction(async () => {
+      await apiRequest<PlanningCycle>(`/planning-cycles/${editCycleId}`, {
+        method: 'PATCH',
         body: JSON.stringify({
-          projectId: adminCycleProjectId,
-          teamId: adminCycleTeamId,
-          name: adminCycleName.trim(),
-          startDate: adminCycleStartDate,
-          endDate: adminCycleEndDate,
+          projectId: editCycleProjectId,
+          name: editCycleName.trim(),
+          startDate: editCycleStartDate,
+          endDate: editCycleEndDate,
         }),
       });
-      setAdminCycleName('');
-      setAdminCycleStartDate('');
-      setAdminCycleEndDate('');
-      await bootstrapLookups('Planning cycle created and lists refreshed.');
-    }, 'Planning cycle created.');
+      setEditCycleId('');
+      await bootstrapLookups('Sprint updated and lists refreshed.');
+    }, 'Sprint updated.');
+  };
+
+  const deactivateSprint = async (planningCycleId: string) => {
+    await runWorkspaceAction(async () => {
+      await apiRequest<void>(`/planning-cycles/${planningCycleId}`, {
+        method: 'DELETE',
+      });
+      if (selectedCycleId === planningCycleId) {
+        setSelectedCycleId('');
+      }
+      await bootstrapLookups('Sprint deactivated and lists refreshed.');
+    }, 'Sprint deactivated.');
   };
 
   return (
@@ -1348,6 +1353,106 @@ export default function HomePage() {
             </table>
           </div>
 
+          <div style={styles.tableWrap}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.tableHeader}>Project</th>
+                  <th style={styles.tableHeader}>Sprint</th>
+                  <th style={styles.tableHeader}>Start</th>
+                  <th style={styles.tableHeader}>End</th>
+                  <th style={styles.tableHeader}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cycleOptions.length === 0 ? (
+                  <tr>
+                    <td style={styles.tableCell} colSpan={5}>
+                      No sprints available for selected filters.
+                    </td>
+                  </tr>
+                ) : (
+                  cycleOptions.map((cycle) => (
+                    <tr key={cycle.id}>
+                      <td style={styles.tableCell}>
+                        {visibleProjects.find((project) => project.id === cycle.projectId)?.name ??
+                          'Unknown project'}
+                      </td>
+                      <td style={styles.tableCell}>{cycle.name}</td>
+                      <td style={styles.tableCell}>{cycle.startDate}</td>
+                      <td style={styles.tableCell}>{cycle.endDate}</td>
+                      <td style={styles.tableCell}>
+                        <div style={styles.actionRow}>
+                          <button
+                            style={styles.secondaryButton}
+                            type="button"
+                            onClick={() => startCycleEdit(cycle)}
+                            disabled={workspaceLoading}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            style={styles.secondaryButton}
+                            type="button"
+                            onClick={() => void deactivateSprint(cycle.id)}
+                            disabled={workspaceLoading}
+                          >
+                            Deactivate
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {editCycleId && (
+            <article style={styles.workspaceCard}>
+              <h3 style={styles.cardTitle}>Edit Sprint</h3>
+              <form style={styles.formGrid} onSubmit={updateSprint}>
+                <select
+                  style={styles.input}
+                  value={editCycleProjectId}
+                  onChange={(event) => setEditCycleProjectId(event.target.value)}
+                  required
+                >
+                  <option value="">Select project</option>
+                  {visibleProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name} ({project.code})
+                    </option>
+                  ))}
+                </select>
+                <input
+                  style={styles.input}
+                  type="text"
+                  value={editCycleName}
+                  onChange={(event) => setEditCycleName(event.target.value)}
+                  required
+                />
+                <input
+                  style={styles.input}
+                  type="date"
+                  value={editCycleStartDate}
+                  onChange={(event) => setEditCycleStartDate(event.target.value)}
+                  required
+                />
+                <input
+                  style={styles.input}
+                  type="date"
+                  value={editCycleEndDate}
+                  onChange={(event) => setEditCycleEndDate(event.target.value)}
+                  required
+                />
+                <button style={styles.ctaButton} type="submit" disabled={workspaceLoading}>
+                  Save Sprint
+                </button>
+              </form>
+            </article>
+          )}
+
           {showTechnicalDetails && (
             <small style={styles.hint}>
               Selected IDs: org={selectedOrganization?.id ?? 'n/a'} team={selectedTeam?.id ?? 'n/a'} cycle=
@@ -1490,71 +1595,6 @@ export default function HomePage() {
               </form>
             </article>
 
-            <article style={styles.workspaceCard}>
-              <h3 style={styles.cardTitle}>Create Planning Cycle</h3>
-              <form style={styles.formStack} onSubmit={createPlanningCycleAdmin}>
-                <select
-                  style={styles.input}
-                  value={adminCycleProjectId}
-                  onChange={(event) => {
-                    const projectId = event.target.value;
-                    setAdminCycleProjectId(projectId);
-                    const project = visibleProjects.find((item) => item.id === projectId);
-                    if (project?.teamId) {
-                      setAdminCycleTeamId(project.teamId);
-                    }
-                  }}
-                  required
-                >
-                  <option value="">Select project</option>
-                  {visibleProjects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name} ({project.code})
-                    </option>
-                  ))}
-                </select>
-                <select
-                  style={styles.input}
-                  value={adminCycleTeamId}
-                  onChange={(event) => setAdminCycleTeamId(event.target.value)}
-                  required
-                >
-                  <option value="">Select team</option>
-                  {visibleTeams.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {team.name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  style={styles.input}
-                  type="text"
-                  placeholder="Cycle name"
-                  value={adminCycleName}
-                  onChange={(event) => setAdminCycleName(event.target.value)}
-                  required
-                />
-                <div style={styles.formGrid}>
-                  <input
-                    style={styles.input}
-                    type="date"
-                    value={adminCycleStartDate}
-                    onChange={(event) => setAdminCycleStartDate(event.target.value)}
-                    required
-                  />
-                  <input
-                    style={styles.input}
-                    type="date"
-                    value={adminCycleEndDate}
-                    onChange={(event) => setAdminCycleEndDate(event.target.value)}
-                    required
-                  />
-                </div>
-                <button style={styles.ctaButton} type="submit" disabled={adminLoading}>
-                  Create Planning Cycle
-                </button>
-              </form>
-            </article>
           </div>
 
           <div style={styles.tableWrap}>

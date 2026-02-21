@@ -27,7 +27,7 @@ describe('PlanningCyclesService', () => {
     projectsService = module.get<ProjectsService>(ProjectsService);
   });
 
-  it('creates planning cycle for an existing team', () => {
+  it('creates planning cycle for an existing project', () => {
     const org = organizationsService.create({ name: 'Delivery', code: 'dlv' });
     const team = teamsService.create({ organizationId: org.id, name: 'Platform' });
     const project = projectsService.create({
@@ -39,13 +39,12 @@ describe('PlanningCyclesService', () => {
 
     const cycle = planningCyclesService.create({
       projectId: project.id,
-      teamId: team.id,
       name: 'Sprint 10',
       startDate: '2026-03-01',
       endDate: '2026-03-14',
     });
 
-    expect(cycle.teamId).toBe(team.id);
+    expect(cycle.projectId).toBe(project.id);
     expect(cycle.name).toBe('Sprint 10');
   });
 
@@ -62,7 +61,6 @@ describe('PlanningCyclesService', () => {
     expect(() =>
       planningCyclesService.create({
         projectId: project.id,
-        teamId: team.id,
         name: 'Sprint 10',
         startDate: '2026-03-14',
         endDate: '2026-03-01',
@@ -70,7 +68,7 @@ describe('PlanningCyclesService', () => {
     ).toThrow(BadRequestException);
   });
 
-  it('filters planning cycles by teamId and date range', () => {
+  it('filters planning cycles by projectId and date range', () => {
     const org = organizationsService.create({ name: 'Delivery', code: 'dlv' });
     const team1 = teamsService.create({ organizationId: org.id, name: 'Platform' });
     const team2 = teamsService.create({ organizationId: org.id, name: 'QA' });
@@ -89,14 +87,12 @@ describe('PlanningCyclesService', () => {
 
     planningCyclesService.create({
       projectId: project1.id,
-      teamId: team1.id,
       name: 'Sprint 10',
       startDate: '2026-03-01',
       endDate: '2026-03-14',
     });
     planningCyclesService.create({
       projectId: project2.id,
-      teamId: team2.id,
       name: 'Sprint 11',
       startDate: '2026-03-15',
       endDate: '2026-03-28',
@@ -106,12 +102,11 @@ describe('PlanningCyclesService', () => {
       1,
       10,
       project1.id,
-      team1.id,
       '2026-03-01',
       '2026-03-31',
     );
     expect(result.total).toBe(1);
     expect(result.items[0].projectId).toBe(project1.id);
-    expect(result.items[0].teamId).toBe(team1.id);
+    expect(result.items[0].name).toBe('Sprint 10');
   });
 });

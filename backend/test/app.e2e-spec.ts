@@ -232,7 +232,6 @@ describe('App (e2e)', () => {
       .set('Authorization', `Bearer ${managerToken}`)
       .send({
         projectId: project.body.id,
-        teamId: team.body.id,
         name: 'Sprint 12',
         startDate: '2026-04-01',
         endDate: '2026-04-14',
@@ -244,7 +243,6 @@ describe('App (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         projectId: project.body.id,
-        teamId: team.body.id,
         name: 'Sprint 13',
         startDate: '2026-04-15',
         endDate: '2026-04-28',
@@ -253,12 +251,33 @@ describe('App (e2e)', () => {
 
     const listFiltered = await request(app.getHttpServer())
       .get(
-        `/api/v1/planning-cycles?projectId=${project.body.id}&teamId=${team.body.id}&dateFrom=2026-04-01&dateTo=2026-04-30&page=1&pageSize=10`,
+        `/api/v1/planning-cycles?projectId=${project.body.id}&dateFrom=2026-04-01&dateTo=2026-04-30&page=1&pageSize=10`,
       )
       .set('Authorization', `Bearer ${managerToken}`);
     expect(listFiltered.status).toBe(200);
     expect(listFiltered.body.total).toBe(2);
     expect(Array.isArray(listFiltered.body.items)).toBe(true);
+
+    const patchCycle = await request(app.getHttpServer())
+      .patch(`/api/v1/planning-cycles/${managerCreate.body.id}`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({
+        name: 'Sprint 12 Updated',
+      });
+    expect(patchCycle.status).toBe(200);
+    expect(patchCycle.body.name).toBe('Sprint 12 Updated');
+
+    const deleteCycle = await request(app.getHttpServer())
+      .delete(`/api/v1/planning-cycles/${adminCreate.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(deleteCycle.status).toBe(204);
+
+    const listInactive = await request(app.getHttpServer())
+      .get(`/api/v1/planning-cycles?projectId=${project.body.id}&isActive=false&page=1&pageSize=10`)
+      .set('Authorization', `Bearer ${managerToken}`);
+    expect(listInactive.status).toBe(200);
+    expect(listInactive.body.total).toBe(1);
+    expect(listInactive.body.items[0].isActive).toBe(false);
 
     const noAuthList = await request(app.getHttpServer()).get('/api/v1/planning-cycles');
     expect(noAuthList.status).toBe(401);
@@ -297,7 +316,6 @@ describe('App (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         projectId: project.body.id,
-        teamId: team.body.id,
         name: 'Sprint 20',
         startDate: '2026-06-01',
         endDate: '2026-06-14',
@@ -377,7 +395,6 @@ describe('App (e2e)', () => {
       .set('Authorization', `Bearer ${managerToken}`)
       .send({
         projectId: project.body.id,
-        teamId: team.body.id,
         name: 'Sprint 30',
         startDate: '2026-07-01',
         endDate: '2026-07-14',

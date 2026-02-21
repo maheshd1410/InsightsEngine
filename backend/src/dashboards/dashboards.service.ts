@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { CapacityPlansService } from '../capacity-plans/capacity-plans.service';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { PlanningCyclesService } from '../planning-cycles/planning-cycles.service';
+import { ProjectsService } from '../projects/projects.service';
 import { TeamsService } from '../teams/teams.service';
 import { PortfolioDashboardResponse, PortfolioSummaryTile } from './dashboards.types';
 
@@ -10,6 +11,7 @@ export class DashboardsService {
   constructor(
     private readonly organizationsService: OrganizationsService,
     private readonly teamsService: TeamsService,
+    private readonly projectsService: ProjectsService,
     private readonly planningCyclesService: PlanningCyclesService,
     private readonly capacityPlansService: CapacityPlansService,
   ) {}
@@ -21,6 +23,7 @@ export class DashboardsService {
   }): PortfolioDashboardResponse {
     const organizations = this.organizationsService.listAll();
     const teams = this.teamsService.listAll();
+    const projects = this.projectsService.listAll();
     const planningCycles = this.planningCyclesService.listAll();
     const capacityPlans = this.capacityPlansService.listAll();
 
@@ -32,8 +35,17 @@ export class DashboardsService {
     const filteredTeams = teams.filter((team) => organizationIds.has(team.organizationId));
     const teamIds = new Set(filteredTeams.map((team) => team.id));
 
+    const projectIds = new Set(
+      projects
+        .filter((project) => organizationIds.has(project.organizationId) && project.isActive)
+        .map((project) => project.id),
+    );
+
     const filteredPlanningCycles = planningCycles.filter((cycle) => {
-      if (!teamIds.has(cycle.teamId)) {
+      if (!projectIds.has(cycle.projectId)) {
+        return false;
+      }
+      if (!cycle.isActive) {
         return false;
       }
       if (params.dateFrom && cycle.startDate < params.dateFrom) {

@@ -140,7 +140,6 @@ describe('Implemented API contracts', () => {
       .set('Authorization', `Bearer ${managerToken}`)
       .send({
         projectId: projectForCycle.body.id,
-        teamId: teams.body.id,
         name: 'Contract Sprint',
         startDate: '2026-08-01',
         endDate: '2026-08-14',
@@ -150,10 +149,10 @@ describe('Implemented API contracts', () => {
       expect.objectContaining({
         id: expect.any(String),
         projectId: projectForCycle.body.id,
-        teamId: teams.body.id,
         name: 'Contract Sprint',
         startDate: '2026-08-01',
         endDate: '2026-08-14',
+        isActive: true,
       }),
     );
 

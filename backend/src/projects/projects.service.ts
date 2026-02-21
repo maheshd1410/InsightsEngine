@@ -18,6 +18,10 @@ export class ProjectsService {
     private readonly teamsService: TeamsService,
   ) {}
 
+  listAll(): Project[] {
+    return [...this.projects];
+  }
+
   list(
     page: number,
     pageSize: number,

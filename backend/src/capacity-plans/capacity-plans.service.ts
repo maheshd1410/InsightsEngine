@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PlanningCyclesService } from '../planning-cycles/planning-cycles.service';
+import { ProjectsService } from '../projects/projects.service';
 import { TeamsService } from '../teams/teams.service';
 import {
   CapacityPlan,
@@ -14,6 +15,7 @@ export class CapacityPlansService {
 
   constructor(
     private readonly planningCyclesService: PlanningCyclesService,
+    private readonly projectsService: ProjectsService,
     private readonly teamsService: TeamsService,
   ) {}
 
@@ -61,8 +63,16 @@ export class CapacityPlansService {
     }
 
     const planningCycle = this.planningCyclesService.getById(input.planningCycleId);
-    if (planningCycle.teamId !== input.teamId) {
-      throw new BadRequestException('planningCycleId does not belong to provided teamId.');
+    if (!planningCycle.isActive) {
+      throw new BadRequestException('Cannot create capacity plan for inactive planning cycle.');
+    }
+
+    const project = this.projectsService.getById(planningCycle.projectId);
+    if (!project.isActive) {
+      throw new BadRequestException('Cannot create capacity plan for inactive project.');
+    }
+    if (team.organizationId !== project.organizationId) {
+      throw new BadRequestException('teamId organization does not match planning cycle project.');
     }
 
     const duplicate = this.capacityPlans.find(
